@@ -46,8 +46,6 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:3000",
     trace: "on-first-retry",
-    /* Suppress framer-motion so assertions don't race animations. */
-    reducedMotion: "reduce",
   },
 
   projects: [
