@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { runScan } from "@/lib/scan-engine";
+import { scanRatelimit } from "@/lib/rate-limit";
 import { and, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
@@ -49,6 +50,22 @@ export async function POST(req: Request) {
   }
 
   const userId = session.user.id;
+
+  // 1.5 Rate limit — check before parsing body to avoid wasted work on an already-limited request
+  const { success, limit, remaining, reset } = await scanRatelimit.limit(userId);
+  if (!success) {
+    return NextResponse.json(
+      { error: "Rate limit exceeded. Try again later." },
+      {
+        status: 429,
+        headers: {
+          "X-RateLimit-Limit":     String(limit),
+          "X-RateLimit-Remaining": String(remaining),
+          "Retry-After":           String(Math.ceil((reset - Date.now()) / 1000)),
+        },
+      }
+    );
+  }
 
   // 2. Parse request body
   let url: string;

@@ -1,0 +1,8 @@
+{
+  "include": ["app", "test_service.py"],
+  "ignore": [],
+  "reportMissingModuleSource": "none",
+  "reportMissingImports": "none",
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "basic"
+}
