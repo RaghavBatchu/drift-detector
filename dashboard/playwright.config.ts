@@ -3,31 +3,35 @@ import { defineConfig, devices } from "@playwright/test";
 /**
  * Playwright configuration for end-to-end tests.
  *
- * Deliberately does NOT set FASTAPI_BASE_URL so the test always runs
- * against the mock fallback engine — no external ai-service dependency.
+ * Prerequisites
+ * ─────────────
+ * The test drives a real Next.js app with a real database — the same setup
+ * you use for `pnpm dev`.  Before running `pnpm test:e2e`:
  *
- * The webServer block boots the Next.js dev server automatically; tests
- * wait for it to become ready before the first spec runs.
+ *   1. Make sure your database is reachable (local Postgres or Neon).
+ *   2. Run `pnpm dev` in a separate terminal first.
+ *      Playwright will reuse that running server rather than spawning a new
+ *      child process (which might not inherit your shell's DATABASE_URL /
+ *      BETTER_AUTH_SECRET if they live in the shell and not in .env.local).
+ *
+ * Mock engine
+ * ──────────
+ * FASTAPI_BASE_URL is deliberately NOT set here.  The scan-engine falls back
+ * to runMockFallback automatically — no ai-service needed.
  */
 export default defineConfig({
   testDir: "./e2e",
-  /* Run tests in files in parallel */
   fullyParallel: true,
-  /* Fail the build on CI if you accidentally left test.only in source code. */
   forbidOnly: !!process.env.CI,
-  /* Retry on CI only */
   retries: process.env.CI ? 1 : 0,
-  /* Single worker to avoid parallel login collisions on the same DB */
+  /* Single worker — avoids sign-up / DB collisions across parallel tests. */
   workers: 1,
-  /* Reporter */
   reporter: [["list"], ["html", { open: "never" }]],
 
   use: {
     baseURL: "http://localhost:3000",
-    /* Collect trace on first retry to aid debugging */
     trace: "on-first-retry",
-    /* Disable browser animations so assertions aren't racing against
-       framer-motion transitions */
+    /* Suppress framer-motion animations so assertions aren't racing them. */
     reducedMotion: "reduce",
   },
 
@@ -38,21 +42,31 @@ export default defineConfig({
     },
   ],
 
-  /* Boot the Next.js dev server before the test suite starts.
-   * The mock engine is used automatically because FASTAPI_BASE_URL is not set. */
   webServer: {
     command: "pnpm dev",
     url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
-    /* Give Next.js up to 60 s to compile on first start */
+    /**
+     * Always reuse a running server (locally AND on CI if one was pre-started).
+     *
+     * Why `true` (not `!process.env.CI`):
+     *   A freshly-spawned `pnpm dev` child process inherits only the env vars
+     *   that are already exported in the shell that launched `pnpm test:e2e`.
+     *   If DATABASE_URL / BETTER_AUTH_SECRET live in the shell but not in a
+     *   committed .env.local file, the child starts without them → ECONNREFUSED.
+     *   By always reusing an existing server the user started themselves (with
+     *   their full environment), we sidestep the env-inheritance problem entirely.
+     *
+     *   On CI: start the server as a separate step before running Playwright,
+     *   e.g.:  `pnpm dev &` then `pnpm test:e2e`.
+     */
+    reuseExistingServer: true,
     timeout: 60_000,
   },
 
-  /* The mock scan engine takes 4 stages × 4 s = 16 s; give the full flow
-   * plenty of room (60 s total for the scan + 10 s page interactions). */
+  /* Mock engine: 4 stages × 4 s ≈ 16 s total.  Give the full flow 90 s. */
   timeout: 90_000,
   expect: {
-    /* Longer default assertion timeout to handle polling UI */
+    /* Give the polling UI extra time to settle before assertions fail. */
     timeout: 30_000,
   },
 });

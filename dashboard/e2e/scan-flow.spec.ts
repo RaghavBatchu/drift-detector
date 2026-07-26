@@ -46,11 +46,12 @@ test.describe("Scan flow — mock engine, zero external dependencies", () => {
     // Step 1: Sign up a new test user
     // -----------------------------------------------------------------------
     await page.goto("/sign-up");
+    // Wait for the Suspense boundary (useSearchParams) to resolve
+    await page.waitForLoadState("networkidle");
 
-    // Confirm we're on the sign-up page
-    await expect(
-      page.getByRole("heading", { name: "Create an account" })
-    ).toBeVisible();
+    // CardTitle renders as a <div> (not a semantic heading), so we use
+    // getByText rather than getByRole("heading") here and throughout the flow.
+    await expect(page.getByText("Create an account").first()).toBeVisible();
 
     // Fill in the registration form
     await page.getByPlaceholder("John Doe").fill(name);
@@ -62,23 +63,21 @@ test.describe("Scan flow — mock engine, zero external dependencies", () => {
 
     // After sign-up the app redirects to "/" (the scanner form for authed users)
     await page.waitForURL("/", { timeout: 15_000 });
+    await page.waitForLoadState("networkidle");
 
     // -----------------------------------------------------------------------
     // Step 2: Add a repository
-    //   The homepage shows "Initiate Security Scan" when the user is logged in.
+    //   The homepage shows "Initiate Security Scan" (via CardTitle → <div>)
+    //   when the user is logged in.
     //   We use the "try the demo repo" shortcut to fill the URL, then submit.
     // -----------------------------------------------------------------------
-    await expect(
-      page.getByRole("heading", { name: "Initiate Security Scan" })
-    ).toBeVisible();
+    await expect(page.getByText("Initiate Security Scan").first()).toBeVisible();
 
     // Click the demo repo shortcut — this fills the URL input without typing
     await page.getByText("try the demo repo").click();
 
     // Confirm the input now contains the demo URL
-    const repoInput = page.getByPlaceholder(
-      "https://github.com/user/repo"
-    );
+    const repoInput = page.getByPlaceholder("https://github.com/user/repo");
     await expect(repoInput).toHaveValue(DEMO_REPO_URL);
 
     // Submit the form
@@ -88,7 +87,6 @@ test.describe("Scan flow — mock engine, zero external dependencies", () => {
     // Step 3: Wait for ScanProgress to reach a finished state
     //   The component shows "Scan Completed! Redirecting to report..." on
     //   success and then navigates to /repos/:id automatically after 1 s.
-    //   We poll for either the completion text or the repo detail page URL.
     //
     //   Timeout: 60 s — the mock engine takes ~16 s, plus polling overhead.
     // -----------------------------------------------------------------------
@@ -98,8 +96,7 @@ test.describe("Scan flow — mock engine, zero external dependencies", () => {
       page.getByText("Drift Analysis in Progress")
     ).toBeVisible({ timeout: 10_000 });
 
-    // Wait for the scan to finish — either "completed" message or navigation
-    // to the report page.  We wait for the URL to change to /repos/<id>.
+    // Wait for the scan to finish and auto-navigation to the report page.
     await page.waitForURL(/\/repos\/[^/]+$/, { timeout: 60_000 });
 
     // -----------------------------------------------------------------------
@@ -114,31 +111,25 @@ test.describe("Scan flow — mock engine, zero external dependencies", () => {
     // Confirm we landed on a repo detail page
     expect(page.url()).toMatch(/\/repos\/[^/]+$/);
 
-    // The findings section heading
-    await expect(page.getByRole("heading", { name: "Fired Findings" })).toBeVisible(
-      { timeout: 15_000 }
-    );
+    // "Fired Findings" is a real <h2> inside FindingsTable — use h2 locator
+    await expect(
+      page.locator("h2").filter({ hasText: "Fired Findings" })
+    ).toBeVisible({ timeout: 15_000 });
 
     // At least one severity badge must be visible.
-    // SeverityBadge renders the text "Critical", "High", "Medium", or "Low"
-    // in an uppercase tracking-wider span.  We query by any of the four labels.
+    // SeverityBadge renders "Critical", "High", "Medium", or "Low" as
+    // uppercase text in a <span> with tracked-wider styling.
     const severityBadge = page
       .locator("span")
-      .filter({
-        hasText: /^(Critical|High|Medium|Low)$/,
-      })
+      .filter({ hasText: /^(Critical|High|Medium|Low)$/ })
       .first();
 
     await expect(severityBadge).toBeVisible({ timeout: 15_000 });
 
-    // Bonus: verify the summary card "Critical & High Findings" is rendered
-    // (this confirms the full report layout loaded, not just a stub)
-    await expect(
-      page.getByText("Critical & High Findings")
-    ).toBeVisible();
+    // Verify the summary card is rendered (CardTitle → <div>, use getByText)
+    await expect(page.getByText("Critical & High Findings")).toBeVisible();
 
-    // Verify at least one finding row is present in the table (the card rows
-    // each have a commit hash displayed)
-    await expect(page.getByText(/Commit:/)).toBeVisible();
+    // Verify at least one finding row shows a commit hash
+    await expect(page.getByText(/Commit:/).first()).toBeVisible();
   });
 });
