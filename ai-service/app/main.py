@@ -5,8 +5,11 @@ Docs: http://localhost:8001/docs
 """
 from collections import Counter
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from .security import verify_internal_api_key
 
@@ -17,6 +20,15 @@ from . import scoring
 from .explain import explain
 
 app = FastAPI(title="Drift Detector — AI Service", version="0.1.0")
+
+# ---------------------------------------------------------------------------
+# Per-IP rate limiter — defense-in-depth on top of Commit 1's key check.
+# 10 req/hour per IP.  In normal use the dashboard's server IP is the only
+# caller, so raise this if multi-user dashboard traffic starts tripping it.
+# ---------------------------------------------------------------------------
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ---------------------------------------------------------------------------
 # CORS — allow the Next.js dashboard to call this service from the browser.
@@ -125,7 +137,8 @@ def run_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
 
 @app.post("/analyze", response_model=AnalyzeResponse,
           dependencies=[Depends(verify_internal_api_key)])
-def analyze(req: AnalyzeRequest):
+@limiter.limit("10/hour")
+def analyze(request: Request, req: AnalyzeRequest):
     return run_analysis(req)
 
 
