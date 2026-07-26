@@ -1,0 +1,30 @@
+node_modules/
+.next/
+.git/
+.gitignore
+
+# Env files — injected at runtime via docker-compose
+.env
+.env.*
+
+# Test / lint artifacts
+coverage/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Drizzle meta (runtime-generated)
+.drizzle/
+drizzle/meta/

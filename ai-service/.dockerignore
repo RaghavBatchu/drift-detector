@@ -1,0 +1,27 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Data and generated files
+dataset/
+synthetic-infra-repo/
+mined.json
+wrapped.json
+
+# Test files (not needed at runtime)
+test_*.py
+evaluate.py
+generate_*.py
+
+# Git
+.git/
+.gitignore

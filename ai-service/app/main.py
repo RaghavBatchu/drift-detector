@@ -6,6 +6,7 @@ Docs: http://localhost:8001/docs
 from collections import Counter
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from .models import AnalyzeRequest, AnalyzeResponse, Finding
 from .rule_engine import RuleEngine
@@ -14,6 +15,22 @@ from . import scoring
 from .explain import explain
 
 app = FastAPI(title="Drift Detector — AI Service", version="0.1.0")
+
+# ---------------------------------------------------------------------------
+# CORS — allow the Next.js dashboard to call this service from the browser.
+# In Docker Compose the dashboard makes server-side calls (no CORS needed),
+# but browser-based tools (swagger UI, direct fetch) also benefit from this.
+# ---------------------------------------------------------------------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",   # local dev / browser
+        "http://dashboard:3000",   # inter-container (Docker network)
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 engine = RuleEngine()
 matcher = SemanticMatcher()
