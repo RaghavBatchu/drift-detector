@@ -10,6 +10,11 @@ export const auth = betterAuth({
     "http://dashboard:3000",   // Docker inter-container
     "https://*.vercel.app",
   ],
+  rateLimit: {
+    enabled: true,  // explicitly enable — better-auth disables rate limiting in dev by default
+    window: 60,     // time window in seconds
+    max: 10,        // max requests per window per IP (tune after load testing)
+  },
   database: drizzleAdapter(db, {
     provider: "pg",
     schema: schema,
