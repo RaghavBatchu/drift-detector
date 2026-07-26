@@ -38,6 +38,10 @@ class Finding(BaseModel):
     similarity: Optional[float]        # cosine similarity to nearest pattern
     explanation: str                   # plain-English reason
     remediation: str                   # suggested fix
+    # Integration-only fields — used by dashboard mapping layer
+    author: str = ""                   # commit author, passed through from ConfigChange
+    change_summary: str = ""           # server-synthesised one-liner for the UI
+    evidence_side: str = ""            # "added" | "removed" — which side triggered it
 
 
 class AnalyzeResponse(BaseModel):

@@ -26,8 +26,8 @@ def health():
             "embedder": EMBEDDER, "index": INDEX_BACKEND}
 
 
-@app.post("/analyze", response_model=AnalyzeResponse)
-def analyze(req: AnalyzeRequest):
+def run_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
+    """Core rule/semantic/scoring pipeline — shared by /analyze and /scan."""
     findings: list[Finding] = []
     dated_scores: list[tuple[str, float]] = []
 
@@ -62,6 +62,9 @@ def analyze(req: AnalyzeRequest):
                     nearest_pattern=raw["nearest_pattern"],
                     similarity=round(sim, 3) if pattern else None,
                     explanation=expl, remediation=rem,
+                    author=ch.author,
+                    change_summary=f"{rule.name} detected in {ch.file_path}",
+                    evidence_side=rule.applies_to,
                 ))
                 dated_scores.append((ch.commit_date or "0000", score))
         elif pattern:
@@ -82,6 +85,9 @@ def analyze(req: AnalyzeRequest):
                 evidence=(ch.added_lines or ch.removed_lines)[:5],
                 matched_by="semantic", nearest_pattern=pattern["text"],
                 similarity=round(sim, 3), explanation=expl, remediation=rem,
+                author=ch.author,
+                change_summary=f"Semantic match to \"{pattern['text'][:60]}\" in {ch.file_path}",
+                evidence_side="added" if ch.added_lines else "removed",
             ))
             dated_scores.append((ch.commit_date or "0000", score))
 
@@ -96,3 +102,13 @@ def analyze(req: AnalyzeRequest):
         engine_info={"embedder": EMBEDDER, "index": INDEX_BACKEND,
                      "rules": len(engine.rules), "seed_patterns": len(matcher.patterns)},
     )
+
+
+@app.post("/analyze", response_model=AnalyzeResponse)
+def analyze(req: AnalyzeRequest):
+    return run_analysis(req)
+
+
+# /scan endpoint — URL-in, AnalyzeResponse-out
+from .scan import router as scan_router  # noqa: E402 — after app & run_analysis are defined
+app.include_router(scan_router)

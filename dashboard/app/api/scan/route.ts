@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
-import { runMockScan } from "@/lib/mock-scan-engine";
+import { runScan } from "@/lib/scan-engine";
 import { and, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
@@ -119,9 +119,9 @@ export async function POST(req: Request) {
       })
       .returning();
 
-    // 7. Kick off mock scan engine asynchronously (non-blocking)
-    runMockScan(newScan.id).catch((err) => {
-      console.error(`Uncaught error in runMockScan for ${newScan.id}:`, err);
+    // 7. Kick off scan engine asynchronously (non-blocking)
+    runScan(newScan.id).catch((err) => {
+      console.error(`Uncaught error in runScan for ${newScan.id}:`, err);
     });
 
     // 8. Return scan_id immediately

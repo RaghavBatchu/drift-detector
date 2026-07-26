@@ -22,16 +22,18 @@ export interface Finding {
   remediation: string;
 }
 
+export interface ReportSummary {
+  changes_scanned: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+}
+
 export interface DriftReport {
   repo: string;
   drift_score: number;
-  summary: {
-    changes_scanned: number;
-    critical: number;
-    high: number;
-    medium: number;
-    low: number;
-  };
+  summary: ReportSummary;
   findings: Finding[];
   trend: { date: string; score: number }[];
 }
