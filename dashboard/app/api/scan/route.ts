@@ -39,6 +39,21 @@ import { NextResponse } from "next/server";
  *         description: Invalid input or malformed URL.
  *       401:
  *         description: Unauthorized.
+ *       429:
+ *         description: Rate limit exceeded (5 scans/hour per user).
+ *         headers:
+ *           Retry-After:
+ *             description: Seconds until the rate limit window resets.
+ *             schema:
+ *               type: integer
+ *           X-RateLimit-Limit:
+ *             description: Maximum number of requests allowed per window.
+ *             schema:
+ *               type: integer
+ *           X-RateLimit-Remaining:
+ *             description: Number of requests remaining in the current window.
+ *             schema:
+ *               type: integer
  */
 export async function POST(req: Request) {
   // 1. Auth check

@@ -135,8 +135,15 @@ def run_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
     )
 
 
-@app.post("/analyze", response_model=AnalyzeResponse,
-          dependencies=[Depends(verify_internal_api_key)])
+@app.post(
+    "/analyze",
+    response_model=AnalyzeResponse,
+    dependencies=[Depends(verify_internal_api_key)],
+    responses={
+        401: {"description": "Missing or invalid X-Internal-Api-Key"},
+        429: {"description": "Rate limit exceeded"},
+    },
+)
 @limiter.limit("10/hour")
 def analyze(request: Request, req: AnalyzeRequest):
     return run_analysis(req)

@@ -48,7 +48,14 @@ class ScanRequest(BaseModel):
     scan_id: str  # round-tripped for logging/correlation only, not used internally
 
 
-@router.post("/scan", response_model=AnalyzeResponse)
+@router.post(
+    "/scan",
+    response_model=AnalyzeResponse,
+    responses={
+        401: {"description": "Missing or invalid X-Internal-Api-Key"},
+        429: {"description": "Rate limit exceeded"},
+    },
+)
 @limiter.limit("10/hour")
 def scan(request: Request, req: ScanRequest):
     # mine the repo — raises MineError for invalid/unreachable URLs
