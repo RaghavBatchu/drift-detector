@@ -5,8 +5,10 @@ Docs: http://localhost:8001/docs
 """
 from collections import Counter
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from .security import verify_internal_api_key
 
 from .models import AnalyzeRequest, AnalyzeResponse, Finding
 from .rule_engine import RuleEngine
@@ -121,7 +123,8 @@ def run_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
     )
 
 
-@app.post("/analyze", response_model=AnalyzeResponse)
+@app.post("/analyze", response_model=AnalyzeResponse,
+          dependencies=[Depends(verify_internal_api_key)])
 def analyze(req: AnalyzeRequest):
     return run_analysis(req)
 

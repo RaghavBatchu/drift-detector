@@ -1,17 +1,50 @@
-"""Run: python3 -m pytest test_service.py -q"""
-import json
-from fastapi.testclient import TestClient
-from app.main import app
-from app.rule_engine import RuleEngine
-from app import scoring
+"""Run: python3 -m pytest test_service.py -q
 
-client = TestClient(app)
+Notes on auth
+-------------
+INTERNAL_API_KEY must be set before the FastAPI app is imported so that
+security.verify_internal_api_key can read it.  We set it here at module
+level.  The ``_authed`` client carries the header on every request;
+tests that call run_analysis() directly bypass the dependency system and
+need no header.
+"""
+import json
+import os
+
+# Must be set before importing the app so security.py can read it.
+_TEST_API_KEY = "test-internal-api-key"
+os.environ.setdefault("INTERNAL_API_KEY", _TEST_API_KEY)
+
+from fastapi.testclient import TestClient  # noqa: E402
+from app.main import app                  # noqa: E402
+from app.rule_engine import RuleEngine    # noqa: E402
+from app import scoring                   # noqa: E402
+
+# Unauthenticated client — used only to test the rejection path.
+_anon = TestClient(app, raise_server_exceptions=False)
+
+# Authenticated client — used for all normal HTTP-level tests.
+client = TestClient(app, headers={"X-Internal-Api-Key": _TEST_API_KEY})
 engine = RuleEngine()
 
 
 def test_health():
-    r = client.get("/health").json()
+    # /health is intentionally open — no auth header needed.
+    r = _anon.get("/health").json()
     assert r["status"] == "ok" and r["rules_loaded"] >= 15
+
+
+def test_analyze_rejects_missing_key():
+    """POST /analyze without the header must return 401."""
+    payload = json.load(open("demo_payload.json"))
+    r = _anon.post("/analyze", json=payload)
+    assert r.status_code == 401
+
+
+def test_scan_rejects_missing_key():
+    """POST /scan without the header must return 401."""
+    r = _anon.post("/scan", json={"repo_url": "https://example.com/repo", "scan_id": "x"})
+    assert r.status_code == 401
 
 
 def test_hardcoded_secret_fires():
@@ -58,3 +91,4 @@ def test_analyze_contract():
     assert scores == sorted(scores, reverse=True)
     trend = [t["cumulative_drift"] for t in d["risk_trend"]]
     assert trend == sorted(trend)
+

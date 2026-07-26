@@ -1,5 +1,24 @@
-# Root-level gitignore
-.env
+# ===========================================================================
+# Drift Detector — Root .gitignore
+# ===========================================================================
 
-# Docker
+# Environment / secrets
+.env
+.env.local
+.env*.local
+
+# Logs
 *.log
+logs/
+
+# Next.js build output & cache
+.next/
+out/
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# Node
+node_modules/
+
+# Misc
+.DS_Store

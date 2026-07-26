@@ -11,7 +11,9 @@ Next.js side stays non-blocking without adding complexity here.
 import importlib.util
 import os
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+
+from .security import verify_internal_api_key
 from pydantic import BaseModel
 
 from .models import AnalyzeRequest, AnalyzeResponse
@@ -30,7 +32,7 @@ MineError: type = _mine_module.MineError
 
 # ---------------------------------------------------------------------------
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(verify_internal_api_key)])
 
 
 class ScanRequest(BaseModel):

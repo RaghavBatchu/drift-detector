@@ -104,9 +104,19 @@ export async function scanRepo(
     );
   }
 
+  const internalApiKey = process.env.INTERNAL_API_KEY;
+  if (!internalApiKey) {
+    throw new Error(
+      "INTERNAL_API_KEY is not set. Add it to your .env.local (see .env.example)."
+    );
+  }
+
   const res = await fetch(`${baseUrl}/scan`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Internal-Api-Key": internalApiKey,
+    },
     body: JSON.stringify({ repo_url: repoUrl, scan_id: scanId }),
     // next: { revalidate: 0 } — always fresh; scans are never idempotent
   });
