@@ -1,37 +1,52 @@
 import { defineConfig, devices } from "@playwright/test";
+import { config as loadDotenv } from "dotenv";
+import { resolve } from "path";
+
+/**
+ * Load .env.local into the Playwright runner's process.env so the vars
+ * can be forwarded into the Next.js dev-server child process (see webServer.env
+ * below).  This is a no-op when the vars are already in the shell environment.
+ *
+ * Next.js reads .env.local on its own when it starts — but only if NEXT.JS
+ * starts the process itself.  When PLAYWRIGHT spawns `pnpm dev`, the child
+ * inherits process.env from Playwright, NOT from a fresh shell, so Next.js's
+ * own .env.local loading may or may not cover the gap depending on timing.
+ * Explicitly forwarding via `webServer.env` is the guaranteed path.
+ */
+loadDotenv({ path: resolve(__dirname, ".env.local"), override: false });
 
 /**
  * Playwright configuration for end-to-end tests.
  *
- * Prerequisites
- * ─────────────
- * The test drives a real Next.js app with a real database — the same setup
- * you use for `pnpm dev`.  Before running `pnpm test:e2e`:
+ * Prerequisites (one-time setup)
+ * ──────────────────────────────
+ * Create dashboard/.env.local with at minimum:
  *
- *   1. Make sure your database is reachable (local Postgres or Neon).
- *   2. Run `pnpm dev` in a separate terminal first.
- *      Playwright will reuse that running server rather than spawning a new
- *      child process (which might not inherit your shell's DATABASE_URL /
- *      BETTER_AUTH_SECRET if they live in the shell and not in .env.local).
+ *   DATABASE_URL="postgresql://..."   # same value you use for pnpm dev
+ *   BETTER_AUTH_SECRET="..."
+ *   BETTER_AUTH_URL="http://localhost:3000"
+ *
+ * After that, `pnpm test:e2e` is self-contained — Playwright boots the dev
+ * server itself, reads those vars, and tears it down when done.
  *
  * Mock engine
- * ──────────
- * FASTAPI_BASE_URL is deliberately NOT set here.  The scan-engine falls back
- * to runMockFallback automatically — no ai-service needed.
+ * ───────────
+ * FASTAPI_BASE_URL is intentionally NOT set → the scan-engine falls back to
+ * runMockFallback automatically.  No ai-service process needed.
  */
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  /* Single worker — avoids sign-up / DB collisions across parallel tests. */
+  /* Single worker — one sign-up at a time avoids DB row conflicts. */
   workers: 1,
   reporter: [["list"], ["html", { open: "never" }]],
 
   use: {
     baseURL: "http://localhost:3000",
     trace: "on-first-retry",
-    /* Suppress framer-motion animations so assertions aren't racing them. */
+    /* Suppress framer-motion so assertions don't race animations. */
     reducedMotion: "reduce",
   },
 
@@ -45,28 +60,34 @@ export default defineConfig({
   webServer: {
     command: "pnpm dev",
     url: "http://localhost:3000",
-    /**
-     * Always reuse a running server (locally AND on CI if one was pre-started).
-     *
-     * Why `true` (not `!process.env.CI`):
-     *   A freshly-spawned `pnpm dev` child process inherits only the env vars
-     *   that are already exported in the shell that launched `pnpm test:e2e`.
-     *   If DATABASE_URL / BETTER_AUTH_SECRET live in the shell but not in a
-     *   committed .env.local file, the child starts without them → ECONNREFUSED.
-     *   By always reusing an existing server the user started themselves (with
-     *   their full environment), we sidestep the env-inheritance problem entirely.
-     *
-     *   On CI: start the server as a separate step before running Playwright,
-     *   e.g.:  `pnpm dev &` then `pnpm test:e2e`.
-     */
-    reuseExistingServer: true,
+    /* Locally: reuse an already-running dev server if present (fast iteration).
+       On CI: always start a fresh one. */
+    reuseExistingServer: !process.env.CI,
     timeout: 60_000,
+    /**
+     * Explicitly forward the env vars that the Next.js server needs.
+     * These come from process.env, which was populated above either by
+     * loadDotenv (if .env.local exists) or by the user's shell exports.
+     *
+     * Without this, a freshly-spawned `pnpm dev` child may not see the vars
+     * if they came from .env.local rather than the shell — because Next.js
+     * reads .env.local AFTER its process starts, but the pg.Pool and Better
+     * Auth are initialised at import time from the already-set environment.
+     */
+    env: {
+      DATABASE_URL: process.env.DATABASE_URL ?? "",
+      BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET ?? "",
+      BETTER_AUTH_URL:
+        process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
+      FASTAPI_BASE_URL: process.env.FASTAPI_BASE_URL ?? "",
+    },
   },
 
-  /* Mock engine: 4 stages × 4 s ≈ 16 s total.  Give the full flow 90 s. */
+  /* Mock engine: 4 stages × 4 s ≈ 16 s.  Give the full flow 90 s. */
   timeout: 90_000,
   expect: {
-    /* Give the polling UI extra time to settle before assertions fail. */
+    /* Extra headroom for the polling UI to settle. */
     timeout: 30_000,
   },
 });
+

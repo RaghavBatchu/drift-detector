@@ -65,9 +65,15 @@ export async function POST(req: Request) {
   }
 
   try {
-    const parsedUrl = new URL(url);
-    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-      return NextResponse.json({ error: "URL must use HTTP or HTTPS protocol" }, { status: 400 });
+    if (!url.startsWith("/")) {
+      const parsedUrl = new URL(url);
+      if (
+        parsedUrl.protocol !== "http:" &&
+        parsedUrl.protocol !== "https:" &&
+        parsedUrl.protocol !== "file:"
+      ) {
+        return NextResponse.json({ error: "URL must use HTTP, HTTPS, or local path" }, { status: 400 });
+      }
     }
   } catch {
     return NextResponse.json({ error: "Malformed URL" }, { status: 400 });
