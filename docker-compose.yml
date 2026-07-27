@@ -38,6 +38,8 @@ services:
     environment:
       # Hugging Face model cache — persisted in a named volume
       HF_HOME: /root/.cache/huggingface
+      # Inter-service auth
+      INTERNAL_API_KEY: "${INTERNAL_API_KEY}"
     volumes:
       # Named volume keeps the sentence-transformers model between restarts
       - ai_model_cache:/root/.cache/huggingface
@@ -84,6 +86,9 @@ services:
       # Uses the Docker internal hostname so server-side fetch
       # goes through the drift-net bridge — never leaves the host.
       FASTAPI_BASE_URL: "http://ai-service:8001"
+
+      # ---- Inter-service auth ----
+      INTERNAL_API_KEY: "${INTERNAL_API_KEY}"
     depends_on:
       ai-service:
         condition: service_healthy

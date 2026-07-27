@@ -11,7 +11,12 @@ Next.js side stays non-blocking without adding complexity here.
 import importlib.util
 import os
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from typing import Callable, Any
+
+from .security import verify_internal_api_key
 from pydantic import BaseModel
 
 from .models import AnalyzeRequest, AnalyzeResponse
@@ -22,15 +27,20 @@ from .models import AnalyzeRequest, AnalyzeResponse
 # ---------------------------------------------------------------------------
 _mine_repo_path = os.path.join(os.path.dirname(__file__), "..", "mine_repo.py")
 _spec = importlib.util.spec_from_file_location("mine_repo", _mine_repo_path)
+assert _spec is not None and _spec.loader is not None, "Could not load mine_repo.py"
 _mine_module = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mine_module)
 
-mine: callable = _mine_module.mine
+mine: Callable[..., Any] = _mine_module.mine
 MineError: type = _mine_module.MineError
 
 # ---------------------------------------------------------------------------
 
-router = APIRouter()
+# Limiter instance — must use the same key_func as main.py so both routes
+# share the same per-IP counter namespace on app.state.limiter.
+limiter = Limiter(key_func=get_remote_address)
+
+router = APIRouter(dependencies=[Depends(verify_internal_api_key)])
 
 
 class ScanRequest(BaseModel):
@@ -38,8 +48,16 @@ class ScanRequest(BaseModel):
     scan_id: str  # round-tripped for logging/correlation only, not used internally
 
 
-@router.post("/scan", response_model=AnalyzeResponse)
-def scan(req: ScanRequest):
+@router.post(
+    "/scan",
+    response_model=AnalyzeResponse,
+    responses={
+        401: {"description": "Missing or invalid X-Internal-Api-Key"},
+        429: {"description": "Rate limit exceeded"},
+    },
+)
+@limiter.limit("10/hour")
+def scan(request: Request, req: ScanRequest):
     # mine the repo — raises MineError for invalid/unreachable URLs
     try:
         raw_changes = mine(req.repo_url)
