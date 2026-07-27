@@ -66,8 +66,13 @@ export interface RawTrendPoint {
  */
 export interface RawAnalyzeResponse {
   repo_id: string;
-  /** 0–100 repo-level drift accumulation. */
+  /** 0–100 per-scan drift accumulation (this scan's findings only). */
   drift_score: number;
+  /**
+   * 0–100 decay-weighted accumulated score across ALL prior scans.
+   * Computed by ai-service from prior_scores + this scan's drift_score.
+   */
+  repo_score: number;
   /** Chronological list — values are monotonically non-decreasing. */
   risk_trend: RawTrendPoint[];
   /** Counts by upper-case severity key, e.g. { CRITICAL: 2, HIGH: 1 } */
@@ -84,18 +89,23 @@ export interface RawAnalyzeResponse {
 /**
  * POST /scan — hand the ai-service a repo URL, get a full analysis back.
  *
- * @param repoUrl  Public (or locally accessible) git repo URL.
- * @param scanId   Caller-supplied ID round-tripped as `repo_id` in the
- *                 response. Used for logging/correlation; not interpreted
- *                 by the ai-service.
- * @returns        Raw ai-service response — call the mapping layer
- *                 (Commit 6) to convert this to a DriftReport.
- * @throws         Error if the HTTP response is not 2xx, with message
- *                 `"ai-service scan failed: <status> <body>"`.
+ * @param repoUrl      Public (or locally accessible) git repo URL.
+ * @param scanId       Caller-supplied ID round-tripped as `repo_id` in the
+ *                     response. Used for logging/correlation; not interpreted
+ *                     by the ai-service.
+ * @param priorScores  Previous per-scan drift scores for this repo (0-100),
+ *                     oldest first. Forwarded to ai-service so it can compute
+ *                     the decay-weighted accumulated repo_score. Pass [] for
+ *                     a first scan.
+ * @returns            Raw ai-service response — call the mapping layer
+ *                     (map-analyze-response.ts) to convert to a DriftReport.
+ * @throws             Error if the HTTP response is not 2xx, with message
+ *                     `"ai-service scan failed: <status> <body>"`.
  */
 export async function scanRepo(
   repoUrl: string,
-  scanId: string
+  scanId: string,
+  priorScores: number[] = []
 ): Promise<RawAnalyzeResponse> {
   const baseUrl = process.env.FASTAPI_BASE_URL;
   if (!baseUrl) {
@@ -117,7 +127,11 @@ export async function scanRepo(
       "Content-Type": "application/json",
       "X-Internal-Api-Key": internalApiKey,
     },
-    body: JSON.stringify({ repo_url: repoUrl, scan_id: scanId }),
+    body: JSON.stringify({
+      repo_url: repoUrl,
+      scan_id: scanId,
+      prior_scores: priorScores,
+    }),
     // next: { revalidate: 0 } — always fresh; scans are never idempotent
   });
 

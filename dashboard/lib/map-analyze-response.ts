@@ -40,7 +40,13 @@ export interface MappedAnalysis {
   summary: ReportSummary;
   /** 0–1 (divided by 100 from ai-service's 0–100 scale). */
   drift_score: number;
+  /**
+   * 0–1 decay-weighted accumulated score across all prior scans.
+   * Mirrors ai-service repo_score / 100.
+   */
+  repo_score: number;
 }
+
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -155,5 +161,7 @@ export function mapAnalyzeResponse(raw: RawAnalyzeResponse): MappedAnalysis {
     findings: raw.findings.map(mapFinding),
     summary: mapSummary(raw.summary, raw.analyzed_changes),
     drift_score: raw.drift_score / 100,    // 0–100 → 0–1
+    repo_score: (raw.repo_score ?? raw.drift_score) / 100, // 0–100 → 0–1; fallback for older ai-service
   };
 }
+
