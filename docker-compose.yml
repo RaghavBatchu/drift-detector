@@ -23,7 +23,6 @@
 # ============================================================
 
 services:
-
   # ----------------------------------------------------------
   # AI Service — FastAPI / uvicorn
   # ----------------------------------------------------------
@@ -46,11 +45,17 @@ services:
     networks:
       - drift-net
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')",
+        ]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s   # Allow time for model download on first boot
+      start_period: 60s # Allow time for model download on first boot
 
   # ----------------------------------------------------------
   # Dashboard — Next.js production server
