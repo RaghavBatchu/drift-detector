@@ -123,9 +123,12 @@ def run_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
             dated_scores.append((ch.commit_date or "0000", score))
 
     findings.sort(key=lambda f: f.risk_score, reverse=True)
+    per_scan_drift = scoring.drift_score([f.risk_score for f in findings])
+    repo_score = scoring.accumulated_drift_score(req.prior_scores, per_scan_drift)
     return AnalyzeResponse(
         repo_id=req.repo_id,
-        drift_score=scoring.drift_score([f.risk_score for f in findings]),
+        drift_score=per_scan_drift,
+        repo_score=repo_score,
         risk_trend=scoring.risk_trend(dated_scores),
         summary=dict(Counter(f.severity for f in findings)),
         findings=findings,

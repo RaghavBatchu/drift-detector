@@ -20,6 +20,11 @@ class ConfigChange(BaseModel):
 class AnalyzeRequest(BaseModel):
     repo_id: str = Field(default="local", description="Backend's repo identifier")
     changes: list[ConfigChange]
+    prior_scores: list[float] = Field(
+        default_factory=list,
+        description="Previous per-scan drift scores (0-100), oldest first. "
+                    "Used to compute the decay-weighted accumulated repo score.",
+    )
 
 
 class Finding(BaseModel):
@@ -46,7 +51,8 @@ class Finding(BaseModel):
 
 class AnalyzeResponse(BaseModel):
     repo_id: str
-    drift_score: float                 # 0-100, repo-level accumulation
+    drift_score: float                 # 0-100, per-scan accumulation of this scan's findings
+    repo_score: float                  # 0-100, decay-weighted accumulation across ALL scans
     risk_trend: list[dict]             # [{date, cumulative_score}] chronological
     summary: dict                      # counts by severity
     findings: list[Finding]
