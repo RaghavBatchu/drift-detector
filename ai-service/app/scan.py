@@ -46,6 +46,8 @@ router = APIRouter(dependencies=[Depends(verify_internal_api_key)])
 class ScanRequest(BaseModel):
     repo_url: str
     scan_id: str  # round-tripped for logging/correlation only, not used internally
+    prior_scores: list[float] = []      # forwarded to run_analysis for accumulated score
+    prior_trend_points: list[dict] = [] # forwarded for trend_alert() (Feature 6)
 
 
 @router.post(
@@ -68,5 +70,10 @@ def scan(request: Request, req: ScanRequest):
     # scan.py is imported by main.py which defines run_analysis.
     from .main import run_analysis  # noqa: PLC0415
 
-    analyze_req = AnalyzeRequest(repo_id=req.scan_id, changes=raw_changes)
+    analyze_req = AnalyzeRequest(
+        repo_id=req.scan_id,
+        changes=raw_changes,
+        prior_scores=req.prior_scores,
+        prior_trend_points=req.prior_trend_points,
+    )
     return run_analysis(analyze_req)
