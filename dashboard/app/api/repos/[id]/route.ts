@@ -80,7 +80,7 @@ export async function GET(
         where: eq(schema.findings.scanId, latestScan.id),
       });
 
-      // Fetch trend points
+      // Fetch trend points (stores accumulated drift score per scan)
       const trendPoints = await db.select()
         .from(schema.trendPoints)
         .where(eq(schema.trendPoints.repoId, repo.id))
@@ -113,9 +113,18 @@ export async function GET(
         score: tp.score,
       }));
 
+      // repo_accumulated_score: the most recent trend point holds the latest
+      // decay-weighted accumulated score. Falls back to latestDriftScore which
+      // is kept in sync by the scan engine.
+      const latestTrendScore =
+        trendPoints.length > 0
+          ? trendPoints[trendPoints.length - 1].score
+          : (repo.latestDriftScore ?? 0);
+
       latestReport = {
         repo: repo.name,
         drift_score: repo.latestDriftScore ?? 0.0,
+        repo_accumulated_score: latestTrendScore,
         summary: {
           changes_scanned: changesScanned,
           critical,
@@ -135,6 +144,7 @@ export async function GET(
       name: repo.name,
       last_scan_at: repo.lastScanAt ? repo.lastScanAt.toISOString() : null,
       latest_drift_score: repo.latestDriftScore,
+      repo_accumulated_score: repo.latestDriftScore, // kept in sync with latest trend point
       latest_report: latestReport,
     });
   } catch (err) {
