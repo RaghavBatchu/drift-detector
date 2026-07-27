@@ -16,7 +16,7 @@
 
 import { db } from "@/db";
 import * as schema from "@/db/schema";
-import { eq, ne } from "drizzle-orm";
+import { eq, ne, asc } from "drizzle-orm";
 
 import { scanRepo } from "@/lib/fastapi-client";
 import { mapAnalyzeResponse } from "@/lib/map-analyze-response";
@@ -26,6 +26,36 @@ import { mapAnalyzeResponse } from "@/lib/map-analyze-response";
 // ---------------------------------------------------------------------------
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Mirror of ai-service scoring.accumulated_drift_score().
+ * Computes the decay-weighted accumulated score from all prior scans plus
+ * the current scan's per-scan score.
+ *
+ * Formula: saturate( Σ score_i × decay^(n-1-i) )
+ *   - Newest score has weight decay^0 = 1.0
+ *   - Each older score has one additional decay factor
+ *   - saturate(x) = 1 - e^(-x/2.5) keeps the result in [0, 1]
+ *
+ * @param priorScores  Previous per-scan drift scores (0-1 scale), oldest first.
+ * @param newScore     Latest per-scan drift score (0-1 scale).
+ * @param decay        Decay factor per scan (default 0.85 — half-life ≈5 scans).
+ * @returns            Accumulated drift score in [0, 1].
+ */
+function accumulatedScore(
+  priorScores: number[],
+  newScore: number,
+  decay = 0.85
+): number {
+  const scores = [...priorScores, newScore]; // oldest first, newest last
+  const n = scores.length;
+  const weightedSum = scores.reduce(
+    (sum, s, i) => sum + s * Math.pow(decay, n - 1 - i),
+    0
+  );
+  // Same saturating curve as Python: 1 - e^(-x/2.5), result stays in [0,1].
+  return parseFloat((1.0 - Math.exp(-weightedSum / 2.5)).toFixed(4));
+}
 
 async function setStatus(
   scanId: string,
@@ -71,13 +101,23 @@ async function runRealScan(scanId: string): Promise<void> {
     return;
   }
 
-  // 2. Cloning → call ai-service
+  // 2. Fetch prior trend points to build the decay-weighted accumulated score
+  const priorTrendPoints = await db
+    .select()
+    .from(schema.trendPoints)
+    .where(eq(schema.trendPoints.repoId, repo.id))
+    .orderBy(asc(schema.trendPoints.date));
+
+  // prior_scores: stored as 0-1 in DB, ai-service expects 0-100
+  const priorScoresForAI = priorTrendPoints.map((tp) => tp.score * 100);
+
+  // 3. Cloning → call ai-service (passing prior history for decay computation)
   await setStatus(scanId, "cloning");
   console.log(`[scan-engine] ${scanId}: cloning ${repo.url}`);
 
   let raw;
   try {
-    raw = await scanRepo(repo.url, scanId);
+    raw = await scanRepo(repo.url, scanId, priorScoresForAI);
   } catch (err) {
     const msg =
       err instanceof Error
@@ -88,13 +128,13 @@ async function runRealScan(scanId: string): Promise<void> {
     return;
   }
 
-  // 3. Analyzing → map the response
+  // 4. Analyzing → map the response
   await setStatus(scanId, "analyzing");
   console.log(`[scan-engine] ${scanId}: mapping ${raw.findings.length} findings`);
 
-  const { findings, summary, drift_score } = mapAnalyzeResponse(raw);
+  const { findings, summary, drift_score, repo_score } = mapAnalyzeResponse(raw);
 
-  // 4. Persist findings
+  // 5. Persist findings
   if (findings.length > 0) {
     await db.insert(schema.findings).values(
       findings.map((f) => ({
@@ -115,23 +155,34 @@ async function runRealScan(scanId: string): Promise<void> {
     console.log(`[scan-engine] ${scanId}: persisted ${findings.length} findings`);
   }
 
-  // 5. Update repo stats
+  // 6. Compute accumulated score for the trend point.
+  //    ai-service already did this via accumulated_drift_score(); use repo_score
+  //    directly.  If the ai-service is older and didn't return repo_score, fall
+  //    back to the local accumulatedScore() helper with the same decay math.
+  const priorScores01 = priorTrendPoints.map((tp) => tp.score);
+  const trendScore =
+    raw.repo_score !== undefined
+      ? repo_score                                    // ai-service computed it
+      : accumulatedScore(priorScores01, drift_score); // local fallback
+
+  // 7. Update repo stats — store accumulated score as latestDriftScore
   await db
     .update(schema.repos)
-    .set({ latestDriftScore: drift_score, lastScanAt: new Date() })
+    .set({ latestDriftScore: trendScore, lastScanAt: new Date() })
     .where(eq(schema.repos.id, repo.id));
 
-  // 6. Insert one trend_points row (date = now, score = mapped drift_score)
+  // 8. Insert trend_points row with the accumulated (not raw per-scan) score
   await db.insert(schema.trendPoints).values({
     repoId: repo.id,
     date: new Date(),
-    score: drift_score,
+    score: trendScore,
   });
 
-  // 7. Mark completed
+  // 9. Mark completed
   await setStatus(scanId, "completed", { finishedAt: new Date() });
   console.log(
     `[scan-engine] ${scanId}: completed — drift_score=${drift_score.toFixed(3)}, ` +
+    `repo_score=${trendScore.toFixed(3)}, ` +
     `findings=${findings.length}, changes_scanned=${summary.changes_scanned}`
   );
 }
@@ -244,10 +295,19 @@ async function runMockFallback(scanId: string): Promise<void> {
     .set({ latestDriftScore: driftScore, lastScanAt: new Date() })
     .where(eq(schema.repos.id, repo.id));
 
+  // Compute accumulated score using the same decay math as the real engine
+  const priorTrendPoints = await db
+    .select()
+    .from(schema.trendPoints)
+    .where(eq(schema.trendPoints.repoId, repo.id))
+    .orderBy(asc(schema.trendPoints.date));
+  const priorScores01 = priorTrendPoints.map((tp) => tp.score);
+  const accumulatedTrendScore = accumulatedScore(priorScores01, driftScore);
+
   await db.insert(schema.trendPoints).values({
     repoId: repo.id,
     date: new Date(),
-    score: driftScore,
+    score: accumulatedTrendScore,
   });
 }
 
