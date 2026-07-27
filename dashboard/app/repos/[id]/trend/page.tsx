@@ -7,13 +7,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/error-state";
 import {
   ArrowLeft,
-  Calendar,
   TrendingUp,
-  AlertTriangle,
+  TrendingDown,
   Award,
   Sparkles,
   Zap,
   Info,
+  Activity,
+  Minus,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -26,9 +27,11 @@ interface RepoDetailResponse {
   name: string;
   last_scan_at: string | null;
   latest_drift_score: number | null;
+  repo_accumulated_score: number | null;
   latest_report: {
     repo: string;
     drift_score: number;
+    repo_accumulated_score: number;
     summary: {
       changes_scanned: number;
       critical: number;
@@ -155,12 +158,71 @@ export default function RepoTrendPage({ params }: { params: Promise<{ id: string
     };
   }, [repoData]);
 
+  // Score trajectory — 3-point rolling average slope
+  const trajectory = useMemo(() => {
+    if (chartData.length < 3) {
+      return { label: "Insufficient data", icon: "stable", slope: 0 };
+    }
+    // Use last 3 points to compute slope
+    const last3 = chartData.slice(-3);
+    const slopes = [];
+    for (let i = 1; i < last3.length; i++) {
+      slopes.push(last3[i].score - last3[i - 1].score);
+    }
+    const avgSlope = slopes.reduce((a, b) => a + b, 0) / slopes.length;
+
+    if (avgSlope > 3) {
+      return {
+        label: "Accelerating — score is rising quickly",
+        icon: "up",
+        slope: avgSlope,
+        color: "text-severity-critical",
+        bg: "bg-severity-critical/10 border-severity-critical/20",
+      };
+    }
+    if (avgSlope > 0.5) {
+      return {
+        label: "Gradual increase — monitor for continued drift",
+        icon: "up",
+        slope: avgSlope,
+        color: "text-severity-medium",
+        bg: "bg-severity-medium/10 border-severity-medium/20",
+      };
+    }
+    if (avgSlope < -3) {
+      return {
+        label: "Improving rapidly — remediation is working",
+        icon: "down",
+        slope: avgSlope,
+        color: "text-emerald-500",
+        bg: "bg-emerald-500/10 border-emerald-500/20",
+      };
+    }
+    if (avgSlope < -0.5) {
+      return {
+        label: "Gradually improving — keep up the good work",
+        icon: "down",
+        slope: avgSlope,
+        color: "text-emerald-500",
+        bg: "bg-emerald-500/10 border-emerald-500/20",
+      };
+    }
+    return {
+      label: "Stable — score is holding steady",
+      icon: "stable",
+      slope: avgSlope,
+      color: "text-muted-foreground",
+      bg: "bg-muted/50 border-border/40",
+    };
+  }, [chartData]);
+
   if (loading) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-6 w-32" />
         <Skeleton className="h-10 w-2/3" />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
+          <Skeleton className="h-44 w-full" />
           <Skeleton className="h-44 w-full" />
           <Skeleton className="h-44 w-full" />
         </div>
@@ -192,7 +254,7 @@ export default function RepoTrendPage({ params }: { params: Promise<{ id: string
       <div className="border-b border-border/60 pb-6">
         <h1 className="text-3xl font-extrabold tracking-tight">Drift Trend Analysis</h1>
         <p className="text-sm text-muted-foreground mt-1.5">
-          Historical drift performance analytics for repository <span className="font-semibold text-foreground">{repoData.name}</span>
+          Historical accumulated drift performance for repository <span className="font-semibold text-foreground">{repoData.name}</span>
         </p>
       </div>
 
@@ -213,7 +275,7 @@ export default function RepoTrendPage({ params }: { params: Promise<{ id: string
         /* Trend Visualization Layout */
         <div className="space-y-6">
           {/* Top Cards for stats and callouts */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Latest Peak Callout */}
             <Card className="border border-border bg-card shadow-sm relative overflow-hidden">
               <div className="absolute top-0 right-0 p-3 opacity-10">
@@ -221,7 +283,7 @@ export default function RepoTrendPage({ params }: { params: Promise<{ id: string
               </div>
               <CardHeader className="pb-2">
                 <CardDescription className="font-bold text-xs uppercase tracking-wider text-muted-foreground">
-                  Peak Drift Score Callout
+                  Peak Accumulated Score
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-1.5">
@@ -234,7 +296,7 @@ export default function RepoTrendPage({ params }: { params: Promise<{ id: string
                 <div className="text-xs text-muted-foreground leading-relaxed pt-1.5 flex items-start gap-1.5">
                   <Sparkles className="h-4 w-4 text-primary shrink-0 mt-0.5" />
                   <span>
-                    The highest drift score represents the maximum configuration disparity detected in the scan history pool.
+                    The highest accumulated score represents the maximum compounding risk observed, factoring in all prior scan history.
                   </span>
                 </div>
               </CardContent>
@@ -260,24 +322,52 @@ export default function RepoTrendPage({ params }: { params: Promise<{ id: string
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Calculated across <span className="font-semibold text-foreground">{chartData.length} scans</span>. Lower drift score represents higher security compliance.
+                  Calculated across <span className="font-semibold text-foreground">{chartData.length} scans</span>. Scores are decay-weighted — each scan compounds with previous history.
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Score Trajectory Card */}
+            <Card className="border border-border bg-card shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-3 opacity-10">
+                <Activity className="h-12 w-12 text-primary" />
+              </div>
+              <CardHeader className="pb-2">
+                <CardDescription className="font-bold text-xs uppercase tracking-wider text-muted-foreground">
+                  Score Trajectory
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-[10px] font-bold ${trajectory.bg} ${trajectory.color}`}>
+                    {trajectory.icon === "up" && <TrendingUp className="h-3 w-3" />}
+                    {trajectory.icon === "down" && <TrendingDown className="h-3 w-3" />}
+                    {trajectory.icon === "stable" && <Minus className="h-3 w-3" />}
+                    {trajectory.slope > 0 ? "+" : ""}{trajectory.slope.toFixed(1)}% / scan
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  {trajectory.label}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  Based on 3-scan rolling average slope.
                 </p>
               </CardContent>
             </Card>
           </div>
 
-          {/* Recharts Area Chart */}
+          {/* Recharts Dual-Series Area Chart */}
           <Card className="border border-border bg-card shadow-sm">
             <CardHeader className="pb-4">
               <CardTitle className="text-lg font-bold flex items-center gap-1.5">
-                <TrendingUp className="h-5 w-5 text-primary" /> Compliance Progress Chart
+                <TrendingUp className="h-5 w-5 text-primary" /> Accumulated Drift Score Chart
               </CardTitle>
               <CardDescription>
-                Drift score progress over time. Hover points for date details.
+                Solid line = accumulated score (compounding history). Dashed line = per-scan estimate. Hover points for date details.
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-2">
-              <TrendChart trend={report.trend} />
+              <TrendChart trend={report.trend} showDualSeries={chartData.length > 1} />
             </CardContent>
           </Card>
         </div>

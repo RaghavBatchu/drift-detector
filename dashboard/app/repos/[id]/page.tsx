@@ -16,7 +16,9 @@ import {
   Play,
   FileCode,
   TrendingUp,
+  TrendingDown,
   Zap,
+  ShieldAlert,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -28,9 +30,11 @@ interface RepoDetailResponse {
   name: string;
   last_scan_at: string | null;
   latest_drift_score: number | null;
+  repo_accumulated_score: number | null;
   latest_report: {
     repo: string;
     drift_score: number;
+    repo_accumulated_score: number;
     summary: {
       changes_scanned: number;
       critical: number;
@@ -123,6 +127,31 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
       minute: "2-digit",
     });
   };
+
+  // Accumulated score helpers
+  const accumulatedScorePct = useMemo(() => {
+    const v = repoData?.latest_report?.repo_accumulated_score ?? repoData?.repo_accumulated_score ?? null;
+    return v !== null ? Math.round(v * 100) : null;
+  }, [repoData]);
+
+  const driftScorePct = useMemo(() => {
+    const v = repoData?.latest_report?.drift_score ?? null;
+    return v !== null ? Math.round(v * 100) : null;
+  }, [repoData]);
+
+  // Delta between accumulated (compounded history) vs latest single scan
+  const scoreDelta = useMemo(() => {
+    if (accumulatedScorePct === null || driftScorePct === null) return null;
+    return accumulatedScorePct - driftScorePct;
+  }, [accumulatedScorePct, driftScorePct]);
+
+  const accumulatedRiskLevel = useMemo(() => {
+    if (accumulatedScorePct === null) return null;
+    if (accumulatedScorePct >= 80) return { label: "Critical", color: "text-severity-critical" };
+    if (accumulatedScorePct >= 50) return { label: "High", color: "text-severity-high" };
+    if (accumulatedScorePct >= 20) return { label: "Medium", color: "text-severity-medium" };
+    return { label: "Low", color: "text-emerald-500" };
+  }, [accumulatedScorePct]);
 
   // SVG Sparkline generator for Trend Points
   const trendSparklineData = useMemo(() => {
@@ -279,41 +308,71 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
             animate="show"
             className="grid grid-cols-1 md:grid-cols-3 gap-6"
           >
-            {/* Drift Score Card */}
+            {/* Repository Health Score Card (accumulated, compounding across history) */}
             <motion.div variants={cardItemVariants}>
               <Card className="border border-border bg-card relative overflow-hidden shadow-sm h-full">
                 <div className="absolute top-0 right-0 p-3 opacity-15">
-                  <TrendingUp className="h-10 w-10 text-primary" />
+                  <ShieldAlert className="h-10 w-10 text-primary" />
                 </div>
                 <CardHeader className="pb-2">
                   <CardDescription className="font-bold text-xs uppercase tracking-wider text-muted-foreground">
-                    Aggregate Drift Score
+                    Repository Health Score
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="flex items-baseline space-x-2">
                     <span className="text-5xl font-black tracking-tight text-foreground">
-                      <AnimatedCounter value={report.drift_score * 100} />
+                      {accumulatedScorePct !== null ? (
+                        <AnimatedCounter value={accumulatedScorePct} />
+                      ) : (
+                        <AnimatedCounter value={report.drift_score * 100} />
+                      )}
                     </span>
                     <span className="text-lg font-bold text-muted-foreground">%</span>
+                    {/* Delta badge: shows how much accumulated > per-scan */}
+                    {scoreDelta !== null && scoreDelta !== 0 && (
+                      <span
+                        className={`ml-1 flex items-center gap-0.5 text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                          scoreDelta > 0
+                            ? "bg-severity-critical/10 text-severity-critical"
+                            : "bg-emerald-500/10 text-emerald-500"
+                        }`}
+                      >
+                        {scoreDelta > 0 ? (
+                          <TrendingUp className="h-3 w-3" />
+                        ) : (
+                          <TrendingDown className="h-3 w-3" />
+                        )}
+                        {scoreDelta > 0 ? "+" : ""}{scoreDelta}%
+                      </span>
+                    )}
                   </div>
+                  {/* Risk level label */}
+                  {accumulatedRiskLevel && (
+                    <p className={`text-xs font-semibold ${accumulatedRiskLevel.color}`}>
+                      {accumulatedRiskLevel.label} accumulated risk
+                    </p>
+                  )}
                   {/* Progress gauge */}
                   <div className="h-2 w-full bg-muted rounded-full overflow-hidden border border-border/20">
                     <motion.div
                       className={`h-full ${
-                        report.drift_score >= 0.8
+                        (accumulatedScorePct ?? 0) >= 80
                           ? "bg-severity-critical"
-                          : report.drift_score >= 0.5
+                          : (accumulatedScorePct ?? 0) >= 50
                           ? "bg-severity-high"
-                          : report.drift_score >= 0.2
+                          : (accumulatedScorePct ?? 0) >= 20
                           ? "bg-severity-medium"
                           : "bg-emerald-500"
                       }`}
                       initial={{ width: 0 }}
-                      animate={{ width: `${report.drift_score * 100}%` }}
+                      animate={{ width: `${accumulatedScorePct ?? report.drift_score * 100}%` }}
                       transition={{ duration: 1.2, ease: "easeOut" }}
                     />
                   </div>
+                  <p className="text-[10px] text-muted-foreground leading-snug">
+                    Decay-weighted across all scans. Higher than a single-scan score means risk has been compounding.
+                  </p>
                 </CardContent>
               </Card>
             </motion.div>
@@ -326,7 +385,7 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
                 </div>
                 <CardHeader className="pb-2">
                   <CardDescription className="font-bold text-xs uppercase tracking-wider text-muted-foreground">
-                    Critical & High Findings
+                    Critical &amp; High Findings
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-1">
@@ -364,23 +423,23 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
             </motion.div>
           </motion.div>
 
-          {/* Historical Trend Sparkline (Optional Premium Touch) */}
+          {/* Historical Trend Sparkline */}
           {report.trend && report.trend.length >= 2 && (
             <Card className="border border-border bg-card shadow-sm p-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
                 <div>
                   <h3 className="font-bold text-sm text-foreground flex items-center gap-1.5">
-                    <TrendingUp className="h-4 w-4 text-primary" /> Historical Drift Trend
+                    <TrendingUp className="h-4 w-4 text-primary" /> Accumulated Drift Trend
                   </h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Aggregated drift score progression over the last 10 scans.
+                    Compounding score across all {report.trend.length} scan{report.trend.length !== 1 ? "s" : ""}. Each point factors in full scan history with decay.
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="flex items-center space-x-1 bg-muted/50 border border-border/40 px-2 py-0.5 rounded text-[10px] font-bold text-muted-foreground">
                     <span>Start: {(report.trend[0].score * 100).toFixed(0)}%</span>
                     <span>→</span>
-                    <span>End: {(report.trend[report.trend.length - 1].score * 100).toFixed(0)}%</span>
+                    <span>Now: {(report.trend[report.trend.length - 1].score * 100).toFixed(0)}%</span>
                   </div>
                   <Link href={`/repos/${repoId}/trend`}>
                     <Button variant="outline" size="sm" className="text-xs font-semibold gap-1.5 cursor-pointer">
@@ -423,7 +482,7 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
                     {/* Hover Tooltip */}
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/dot:flex flex-col items-center pointer-events-none z-20">
                       <div className="bg-popover border border-border text-popover-foreground text-[10px] font-semibold px-2 py-1 rounded shadow-md whitespace-nowrap">
-                        {(pt.score * 100).toFixed(0)}% ({new Date(pt.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })})
+                        {(pt.score * 100).toFixed(0)}% accumulated ({new Date(pt.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })})
                       </div>
                       <div className="w-1.5 h-1.5 bg-popover border-b border-r border-border rotate-45 -mt-1" />
                     </div>
