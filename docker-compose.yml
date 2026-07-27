@@ -23,7 +23,6 @@
 # ============================================================
 
 services:
-
   # ----------------------------------------------------------
   # AI Service — FastAPI / uvicorn
   # ----------------------------------------------------------
@@ -39,18 +38,24 @@ services:
       # Hugging Face model cache — persisted in a named volume
       HF_HOME: /root/.cache/huggingface
       # Inter-service auth
-      INTERNAL_API_KEY: "${INTERNAL_API_KEY}"
+      INTERNAL_API_KEY: "${INTERNAL_API_KEY:-eB1iDCP80RbRwGQiKCrtLK_fdf348dfadf1982xfha}"
     volumes:
       # Named volume keeps the sentence-transformers model between restarts
       - ai_model_cache:/root/.cache/huggingface
     networks:
       - drift-net
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')",
+        ]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s   # Allow time for model download on first boot
+      start_period: 60s # Allow time for model download on first boot
 
   # ----------------------------------------------------------
   # Dashboard — Next.js production server
@@ -88,7 +93,11 @@ services:
       FASTAPI_BASE_URL: "http://ai-service:8001"
 
       # ---- Inter-service auth ----
-      INTERNAL_API_KEY: "${INTERNAL_API_KEY}"
+      INTERNAL_API_KEY: "${INTERNAL_API_KEY:-eB1iDCP80RbRwGQiKCrtLK_fdf348dfadf1982xfha}"
+
+      # ---- Rate limiting (Upstash Redis) ----
+      UPSTASH_REDIS_REST_URL: "${UPSTASH_REDIS_REST_URL}"
+      UPSTASH_REDIS_REST_TOKEN: "${UPSTASH_REDIS_REST_TOKEN}"
     depends_on:
       ai-service:
         condition: service_healthy
