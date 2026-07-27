@@ -5,6 +5,10 @@ context score (keyword/criticality heuristics over the diff text itself).
 
 Repo drift score = severity-weighted accumulation across history, squashed
 to 0-100, with a chronological trend so the dashboard can plot trajectory.
+
+Accumulated repo score = decay-weighted sum of all prior scan scores.
+Each scan's contribution decays by DECAY_FACTOR per scan so old risky
+commits fade but are not forgotten.  Half-life ≈ 5 scans at 0.85.
 """
 import math
 import re
@@ -73,6 +77,48 @@ def drift_score(finding_scores: list[float]) -> float:
         return 0.0
     raw = sum(s / 100.0 for s in finding_scores)          # in 'critical units'
     return round(100.0 * (1.0 - math.exp(-raw / 2.5)), 1)
+
+
+#: Exponential decay factor applied per scan age.
+#: 0.85 gives a half-life of ≈5 scans: older risky scans fade but persist.
+DECAY_FACTOR = 0.85
+
+
+def accumulated_drift_score(
+    prior_scores: list[float],
+    new_score: float,
+    decay: float = DECAY_FACTOR,
+) -> float:
+    """Decay-weighted accumulated repo drift score, 0-100.
+
+    Combines all historical per-scan drift scores (oldest first) with the
+    latest score into a single number using exponential decay:
+
+        accumulated = saturate( Σ score_i × decay^(n - 1 - i) )
+
+    where n is the total number of scores (including new_score) and i is the
+    0-based index.  The newest scan has weight decay^0 = 1.0; each older
+    scan carries an additional decay factor.
+
+    The saturating transform matches drift_score() so the result stays on a
+    0-100 scale regardless of how many scans have run.
+
+    Args:
+        prior_scores: All previous per-scan drift scores (0-100), oldest first.
+        new_score:    The drift score from the scan just completed (0-100).
+        decay:        Decay factor per scan (default DECAY_FACTOR = 0.85).
+
+    Returns:
+        Accumulated drift score in [0, 100].
+    """
+    scores = prior_scores + [new_score]          # full history, oldest first
+    n = len(scores)
+    weighted_sum = sum(
+        (s / 100.0) * (decay ** (n - 1 - i))
+        for i, s in enumerate(scores)
+    )
+    # Same saturating curve as drift_score() for scale consistency.
+    return round(100.0 * (1.0 - math.exp(-weighted_sum / 2.5)), 1)
 
 
 def risk_trend(dated_scores: list[tuple[str, float]]) -> list[dict]:

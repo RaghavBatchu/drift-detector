@@ -33,6 +33,11 @@ export interface ReportSummary {
 export interface DriftReport {
   repo: string;
   drift_score: number;
+  /**
+   * Decay-weighted accumulated drift score across all scans for this repo.
+   * Range 0–1. Reflects compounding risk history, not just the latest scan.
+   */
+  repo_accumulated_score: number;
   summary: ReportSummary;
   findings: Finding[];
   trend: { date: string; score: number }[];
@@ -44,4 +49,9 @@ export interface RepoSummary {
   name: string;
   last_scan_at: string | null;
   latest_drift_score: number | null;
+  /**
+   * Decay-weighted accumulated drift score stored in repos.latestDriftScore.
+   * Same value as the most recent trend_points row for this repo.
+   */
+  repo_accumulated_score: number | null;
 }
