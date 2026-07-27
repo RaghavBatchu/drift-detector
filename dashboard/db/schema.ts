@@ -73,6 +73,11 @@ export const scans = pgTable("scans", {
   startedAt: timestamp("started_at").defaultNow().notNull(),
   finishedAt: timestamp("finished_at"),
   error: text("error"),
+  /**
+   * Feature 6: trend-level alert persisted at scan completion.
+   * Null when the score did not exceed the threshold in the rolling window.
+   */
+  trendAlert: jsonb("trend_alert").$type<Record<string, unknown> | null>().default(null),
 });
 
 export const findings = pgTable("findings", {

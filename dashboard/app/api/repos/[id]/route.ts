@@ -134,6 +134,9 @@ export async function GET(
         },
         findings: mappedFindings,
         trend,
+        // Feature 6: trend_alert stored on the scan row at completion time.
+        // null means the trend was within acceptable bounds on the last scan.
+        trend_alert: latestScan.trendAlert ?? null,
       };
     }
 

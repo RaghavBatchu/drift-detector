@@ -15,6 +15,8 @@ import {
   Info,
   Activity,
   Minus,
+  AlertTriangle,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -41,6 +43,17 @@ interface RepoDetailResponse {
     };
     findings: any[];
     trend: { date: string; score: number }[];
+    trend_alert: {
+      fired: true;
+      score_start: number;
+      score_end: number;
+      delta: number;
+      window_days: number;
+      threshold: number;
+      points_in_window: number;
+      confidence: number;
+      message: string;
+    } | null;
   } | null;
 }
 
@@ -53,6 +66,7 @@ export default function RepoTrendPage({ params }: { params: Promise<{ id: string
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [alertDismissed, setAlertDismissed] = useState(false);
 
   // Accessibility checking for prefers-reduced-motion
   const shouldReduceMotion = useReducedMotion();
@@ -236,6 +250,7 @@ export default function RepoTrendPage({ params }: { params: Promise<{ id: string
   }
 
   const report = repoData.latest_report;
+  const trendAlert = report?.trend_alert ?? null;
 
   return (
     <div className="space-y-6">
@@ -258,6 +273,46 @@ export default function RepoTrendPage({ params }: { params: Promise<{ id: string
         </p>
       </div>
 
+      {/* Feature 6: Trend Alert Banner */}
+      {trendAlert && !alertDismissed && (
+        <div
+          role="alert"
+          aria-live="polite"
+          className="relative flex items-start gap-3 rounded-lg border border-severity-critical/40 bg-severity-critical/8 px-4 py-3.5 text-sm shadow-sm"
+        >
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-severity-critical" aria-hidden="true" />
+          <div className="flex-1 space-y-1">
+            <p className="font-semibold text-severity-critical">
+              Trend Alert &mdash; Score jumped&nbsp;
+              <span className="font-black">
+                +{trendAlert.delta.toFixed(1)} points
+              </span>
+              &nbsp;in the last {trendAlert.window_days}&nbsp;days
+            </p>
+            <p className="text-muted-foreground leading-relaxed">
+              {trendAlert.message}
+            </p>
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="inline-flex items-center gap-1 rounded-full border border-severity-critical/30 bg-severity-critical/10 px-2.5 py-0.5 text-[10px] font-bold text-severity-critical">
+                {trendAlert.score_start.toFixed(1)}% &rarr; {trendAlert.score_end.toFixed(1)}%
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2.5 py-0.5 text-[10px] font-bold text-muted-foreground">
+                {trendAlert.points_in_window} scans in window
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2.5 py-0.5 text-[10px] font-bold text-muted-foreground">
+                Confidence: {(trendAlert.confidence * 100).toFixed(0)}%
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => setAlertDismissed(true)}
+            aria-label="Dismiss trend alert"
+            className="ml-auto rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
       {!report || chartData.length === 0 ? (
         /* Empty State */
         <Card className="border border-border/80 bg-card p-12 text-center shadow-sm">

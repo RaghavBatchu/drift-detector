@@ -63,6 +63,7 @@ function makeDriftReport(overrides: Partial<DriftReport> = {}): DriftReport {
   return {
     repo: "github.com/acme/api",
     drift_score: 0.752,
+    repo_accumulated_score: 0.65,
     summary: {
       changes_scanned: 42,
       critical: 1,
@@ -75,6 +76,7 @@ function makeDriftReport(overrides: Partial<DriftReport> = {}): DriftReport {
       { date: "2024-01-10", score: 0.5 },
       { date: "2024-01-15", score: 0.752 },
     ],
+    trend_alert: null,
     ...overrides,
   };
 }
@@ -89,6 +91,7 @@ function makeRepoSummary(overrides: Partial<RepoSummary> = {}): RepoSummary {
     name: "acme/api",
     last_scan_at: "2024-01-15T10:00:00Z",
     latest_drift_score: 0.752,
+    repo_accumulated_score: 0.65,
     ...overrides,
   };
 }
