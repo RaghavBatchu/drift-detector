@@ -135,8 +135,8 @@ export function TrendChart({ trend, showDualSeries = false }: TrendChartProps) {
             <YAxis {...commonAxisProps} domain={[0, 100]} tickFormatter={(v) => `${v}%`} dx={-8} />
             <Tooltip
               contentStyle={tooltipStyle}
-              formatter={(value: number, name: string) => [
-                `${value.toFixed(1)}%`,
+              formatter={(value: any, name: any) => [
+                `${Number(value).toFixed(1)}%`,
                 name === "score" ? "Accumulated Score" : "Per-scan Score",
               ]}
               labelFormatter={(label) => `Scan Date: ${label}`}
@@ -239,7 +239,7 @@ export function TrendChart({ trend, showDualSeries = false }: TrendChartProps) {
           />
           <Tooltip
             contentStyle={tooltipStyle}
-            formatter={(value: number) => [`${value}%`, "Accumulated Drift Score"]}
+            formatter={(value: any) => [`${value}%`, "Accumulated Drift Score"]}
             labelFormatter={(label) => `Scan Date: ${label}`}
           />
           <Area
