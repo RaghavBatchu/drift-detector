@@ -31,9 +31,22 @@ export const FindingSchema = z.object({
   remediation: z.string(),
 });
 
+export const TrendAlertSchema = z.object({
+  fired: z.literal(true),
+  score_start: z.number(),
+  score_end: z.number(),
+  delta: z.number(),
+  window_days: z.number(),
+  threshold: z.number(),
+  points_in_window: z.number(),
+  confidence: z.number(),
+  message: z.string(),
+});
+
 export const DriftReportSchema = z.object({
   repo: z.string(),
   drift_score: z.number(),
+  repo_accumulated_score: z.number(),
   summary: z.object({
     changes_scanned: z.number(),
     critical: z.number(),
@@ -48,6 +61,8 @@ export const DriftReportSchema = z.object({
       score: z.number(),
     })
   ),
+  // Feature 6: trend-level alert; null when score is within bounds.
+  trend_alert: TrendAlertSchema.nullable(),
 });
 
 export const RepoSummarySchema = z.object({
@@ -56,4 +71,5 @@ export const RepoSummarySchema = z.object({
   name: z.string(),
   last_scan_at: z.string().nullable(),
   latest_drift_score: z.number().nullable(),
+  repo_accumulated_score: z.number().nullable(),
 });

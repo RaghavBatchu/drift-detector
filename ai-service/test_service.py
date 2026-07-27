@@ -92,3 +92,109 @@ def test_analyze_contract():
     trend = [t["cumulative_drift"] for t in d["risk_trend"]]
     assert trend == sorted(trend)
 
+
+# ---------------------------------------------------------------------------
+# Feature 6: trend_alert() unit tests
+# ---------------------------------------------------------------------------
+
+import pytest  # noqa: E402
+from datetime import datetime, timezone, timedelta  # noqa: E402
+
+
+def _now_iso(offset_days: int = 0) -> str:
+    """Return an ISO-8601 UTC timestamp offset_days from now."""
+    dt = datetime.now(tz=timezone.utc) + timedelta(days=offset_days)
+    return dt.isoformat()
+
+
+def test_trend_alert_no_fire_below_threshold():
+    """Delta below threshold returns None."""
+    points = [
+        {"date": _now_iso(-10), "score": 20.0},
+        {"date": _now_iso(-1),  "score": 34.0},  # delta = 14 < 15
+    ]
+    assert scoring.trend_alert(points, threshold=15.0, window_days=30) is None
+
+
+def test_trend_alert_fires_above_threshold():
+    """Delta above threshold returns alert dict with all required fields."""
+    points = [
+        {"date": _now_iso(-10), "score": 20.0},
+        {"date": _now_iso(-1),  "score": 40.0},  # delta = 20 > 15
+    ]
+    alert = scoring.trend_alert(points, threshold=15.0, window_days=30)
+    assert alert is not None
+    assert alert["fired"] is True
+    assert alert["delta"] == pytest.approx(20.0, abs=0.01)
+    assert alert["score_start"] == pytest.approx(20.0, abs=0.01)
+    assert alert["score_end"] == pytest.approx(40.0, abs=0.01)
+    assert alert["window_days"] == 30
+    assert alert["threshold"] == 15.0
+    assert alert["points_in_window"] == 2
+    assert isinstance(alert["message"], str) and len(alert["message"]) > 20
+
+
+def test_trend_alert_returns_none_for_single_point():
+    """Only one point in window cannot compute delta — returns None."""
+    points = [{"date": _now_iso(-1), "score": 80.0}]
+    assert scoring.trend_alert(points, threshold=15.0, window_days=30) is None
+
+
+def test_trend_alert_returns_none_for_empty():
+    """Empty list returns None (no data)."""
+    assert scoring.trend_alert([], threshold=15.0, window_days=30) is None
+
+
+def test_trend_alert_ignores_points_outside_window():
+    """Large jump outside window is not counted; in-window delta stays below threshold."""
+    points = [
+        {"date": _now_iso(-60), "score": 10.0},
+        {"date": _now_iso(-40), "score": 35.0},  # delta=25 but both outside 30-day window
+        {"date": _now_iso(-5),  "score": 36.0},
+        {"date": _now_iso(-1),  "score": 37.0},  # in-window delta=1 < 15
+    ]
+    assert scoring.trend_alert(points, threshold=15.0, window_days=30) is None
+
+
+def test_trend_alert_confidence_scales_with_data_points():
+    """More points in window yields higher confidence, capped at 0.95."""
+    # 7 points in window, score rises 4 pts/day → delta = 24 > 15
+    points = [
+        {"date": _now_iso(-i), "score": 10.0 + (7 - i) * 4}
+        for i in range(7, 0, -1)
+    ]
+    alert = scoring.trend_alert(points, threshold=15.0, window_days=30)
+    assert alert is not None
+    assert alert["confidence"] == pytest.approx(0.95)  # 7 pts → capped
+
+
+def test_trend_alert_confidence_minimum_two_points():
+    """Two points → confidence = 0.63 (0.55 + 0.08 × 1)."""
+    points = [
+        {"date": _now_iso(-5), "score": 10.0},
+        {"date": _now_iso(-1), "score": 30.0},  # delta = 20 > 15
+    ]
+    alert = scoring.trend_alert(points, threshold=15.0, window_days=30)
+    assert alert is not None
+    assert alert["confidence"] == pytest.approx(0.63, abs=0.001)
+
+
+def test_trend_alert_exactly_at_threshold_does_not_fire():
+    """Delta exactly equal to threshold does NOT fire (strict > required)."""
+    points = [
+        {"date": _now_iso(-5), "score": 10.0},
+        {"date": _now_iso(-1), "score": 25.0},  # delta == 15.0 exactly
+    ]
+    assert scoring.trend_alert(points, threshold=15.0, window_days=30) is None
+
+
+def test_trend_alert_custom_window_and_threshold():
+    """Custom window and threshold parameters are respected."""
+    points = [
+        {"date": _now_iso(-8), "score": 50.0},
+        {"date": _now_iso(-3), "score": 60.0},  # delta = 10 > threshold=8
+    ]
+    alert = scoring.trend_alert(points, threshold=8.0, window_days=10)
+    assert alert is not None
+    assert alert["threshold"] == 8.0
+    assert alert["window_days"] == 10

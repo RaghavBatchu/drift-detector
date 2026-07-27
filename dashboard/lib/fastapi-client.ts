@@ -61,6 +61,23 @@ export interface RawTrendPoint {
 }
 
 /**
+ * Trend-level alert from the ai-service (Feature 6).
+ * Maps 1-to-1 with the Python dict returned by scoring.trend_alert().
+ * Present only when the accumulated score rose above the threshold.
+ */
+export interface RawTrendAlert {
+  fired: true;
+  score_start: number;
+  score_end: number;
+  delta: number;
+  window_days: number;
+  threshold: number;
+  points_in_window: number;
+  confidence: number;
+  message: string;
+}
+
+/**
  * Full response from POST /scan (and POST /analyze).
  * Maps 1-to-1 with the Python AnalyzeResponse Pydantic model.
  */
@@ -80,6 +97,11 @@ export interface RawAnalyzeResponse {
   findings: RawFinding[];
   analyzed_changes: number;
   engine_info: Record<string, string | number>;
+  /**
+   * Feature 6: trend-level alert. Non-null when the accumulated score rose
+   * more than the threshold within the rolling window. Null otherwise.
+   */
+  trend_alert: RawTrendAlert | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,23 +111,27 @@ export interface RawAnalyzeResponse {
 /**
  * POST /scan — hand the ai-service a repo URL, get a full analysis back.
  *
- * @param repoUrl      Public (or locally accessible) git repo URL.
- * @param scanId       Caller-supplied ID round-tripped as `repo_id` in the
- *                     response. Used for logging/correlation; not interpreted
- *                     by the ai-service.
- * @param priorScores  Previous per-scan drift scores for this repo (0-100),
- *                     oldest first. Forwarded to ai-service so it can compute
- *                     the decay-weighted accumulated repo_score. Pass [] for
- *                     a first scan.
- * @returns            Raw ai-service response — call the mapping layer
- *                     (map-analyze-response.ts) to convert to a DriftReport.
- * @throws             Error if the HTTP response is not 2xx, with message
- *                     `"ai-service scan failed: <status> <body>"`.
+ * @param repoUrl           Public (or locally accessible) git repo URL.
+ * @param scanId            Caller-supplied ID round-tripped as `repo_id` in the
+ *                          response. Used for logging/correlation; not interpreted
+ *                          by the ai-service.
+ * @param priorScores       Previous per-scan drift scores for this repo (0-100),
+ *                          oldest first. Forwarded to ai-service so it can compute
+ *                          the decay-weighted accumulated repo_score. Pass [] for
+ *                          a first scan.
+ * @param priorTrendPoints  Previous dated trend points [{date, score (0-100)}],
+ *                          oldest first. Forwarded for trend_alert() (Feature 6).
+ *                          Pass [] for a first scan.
+ * @returns                 Raw ai-service response — call the mapping layer
+ *                          (map-analyze-response.ts) to convert to a DriftReport.
+ * @throws                  Error if the HTTP response is not 2xx, with message
+ *                          `"ai-service scan failed: <status> <body>"`.
  */
 export async function scanRepo(
   repoUrl: string,
   scanId: string,
-  priorScores: number[] = []
+  priorScores: number[] = [],
+  priorTrendPoints: { date: string; score: number }[] = []
 ): Promise<RawAnalyzeResponse> {
   const baseUrl = process.env.FASTAPI_BASE_URL;
   if (!baseUrl) {
@@ -131,6 +157,7 @@ export async function scanRepo(
       repo_url: repoUrl,
       scan_id: scanId,
       prior_scores: priorScores,
+      prior_trend_points: priorTrendPoints,
     }),
     // next: { revalidate: 0 } — always fresh; scans are never idempotent
   });

@@ -25,6 +25,12 @@ class AnalyzeRequest(BaseModel):
         description="Previous per-scan drift scores (0-100), oldest first. "
                     "Used to compute the decay-weighted accumulated repo score.",
     )
+    prior_trend_points: list[dict] = Field(
+        default_factory=list,
+        description="Previous trend points as [{date: ISO-str, score: float (0-100)}], "
+                    "oldest first.  Used by trend_alert() to detect sustained score jumps "
+                    "within a rolling calendar window (Feature 6).",
+    )
 
 
 class Finding(BaseModel):
@@ -58,3 +64,4 @@ class AnalyzeResponse(BaseModel):
     findings: list[Finding]
     analyzed_changes: int
     engine_info: dict                  # which embedder/index backend is live
+    trend_alert: Optional[dict] = None # Feature 6: fired when score jumped > threshold in window

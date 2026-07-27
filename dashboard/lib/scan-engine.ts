@@ -111,13 +111,19 @@ async function runRealScan(scanId: string): Promise<void> {
   // prior_scores: stored as 0-1 in DB, ai-service expects 0-100
   const priorScoresForAI = priorTrendPoints.map((tp) => tp.score * 100);
 
+  // prior_trend_points: same 0-1 → 0-100 conversion for trend_alert() (Feature 6)
+  const priorTrendPointsForAI = priorTrendPoints.map((tp) => ({
+    date: tp.date.toISOString(),
+    score: tp.score * 100,
+  }));
+
   // 3. Cloning → call ai-service (passing prior history for decay computation)
   await setStatus(scanId, "cloning");
   console.log(`[scan-engine] ${scanId}: cloning ${repo.url}`);
 
   let raw;
   try {
-    raw = await scanRepo(repo.url, scanId, priorScoresForAI);
+    raw = await scanRepo(repo.url, scanId, priorScoresForAI, priorTrendPointsForAI);
   } catch (err) {
     const msg =
       err instanceof Error
@@ -132,7 +138,7 @@ async function runRealScan(scanId: string): Promise<void> {
   await setStatus(scanId, "analyzing");
   console.log(`[scan-engine] ${scanId}: mapping ${raw.findings.length} findings`);
 
-  const { findings, summary, drift_score, repo_score } = mapAnalyzeResponse(raw);
+  const { findings, summary, drift_score, repo_score, trend_alert } = mapAnalyzeResponse(raw);
 
   // 5. Persist findings
   if (findings.length > 0) {
@@ -178,8 +184,18 @@ async function runRealScan(scanId: string): Promise<void> {
     score: trendScore,
   });
 
-  // 9. Mark completed
-  await setStatus(scanId, "completed", { finishedAt: new Date() });
+  // 9. Mark completed — persist trend_alert alongside finished timestamp
+  const completedExtra: Record<string, unknown> = { finishedAt: new Date() };
+  if (trend_alert !== null) {
+    completedExtra.trendAlert = trend_alert as unknown as Record<string, unknown>;
+    console.warn(
+      `[scan-engine] ${scanId}: ⚠️  TREND ALERT — accumulated score rose ` +
+      `+${trend_alert.delta.toFixed(1)} pts over ${trend_alert.window_days} days ` +
+      `(${trend_alert.score_start.toFixed(1)} → ${trend_alert.score_end.toFixed(1)}), ` +
+      `confidence=${trend_alert.confidence}`
+    );
+  }
+  await setStatus(scanId, "completed", completedExtra);
   console.log(
     `[scan-engine] ${scanId}: completed — drift_score=${drift_score.toFixed(3)}, ` +
     `repo_score=${trendScore.toFixed(3)}, ` +

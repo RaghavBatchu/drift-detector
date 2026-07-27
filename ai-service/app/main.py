@@ -125,6 +125,15 @@ def run_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
     findings.sort(key=lambda f: f.risk_score, reverse=True)
     per_scan_drift = scoring.drift_score([f.risk_score for f in findings])
     repo_score = scoring.accumulated_drift_score(req.prior_scores, per_scan_drift)
+
+    # Feature 6: check if the trend jumped sharply over the rolling window.
+    # Build the full dated history (prior points + this new point at now) and
+    # run the threshold check.  The new point uses ISO-format UTC timestamp.
+    from datetime import datetime, timezone as _tz  # local import — already in scoring
+    now_iso = datetime.now(tz=_tz.utc).isoformat()
+    full_trend_points = list(req.prior_trend_points) + [{"date": now_iso, "score": repo_score}]
+    alert = scoring.trend_alert(full_trend_points)
+
     return AnalyzeResponse(
         repo_id=req.repo_id,
         drift_score=per_scan_drift,
@@ -135,6 +144,7 @@ def run_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
         analyzed_changes=len(req.changes),
         engine_info={"embedder": EMBEDDER, "index": INDEX_BACKEND,
                      "rules": len(engine.rules), "seed_patterns": len(matcher.patterns)},
+        trend_alert=alert,
     )
 
 

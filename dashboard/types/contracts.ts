@@ -2,6 +2,23 @@ export type Severity = "critical" | "high" | "medium" | "low";
 
 export type ScanStatus = "queued" | "cloning" | "mining" | "analyzing" | "completed" | "failed";
 
+/**
+ * Trend-level alert fired when the accumulated score rose by more than the
+ * configured threshold within a rolling calendar window (Feature 6).
+ * Mirrors the Python dict returned by scoring.trend_alert().
+ */
+export interface TrendAlert {
+  fired: true;
+  score_start: number;   // oldest score in window (0-100)
+  score_end: number;     // newest score in window (0-100)
+  delta: number;         // score_end - score_start
+  window_days: number;   // calendar days inspected
+  threshold: number;     // the threshold that was exceeded
+  points_in_window: number; // how many trend points fell inside the window
+  confidence: number;    // 0-1; higher when more data is present
+  message: string;       // human-readable alert description
+}
+
 export interface Finding {
   id: string;
   file: string;
@@ -41,6 +58,11 @@ export interface DriftReport {
   summary: ReportSummary;
   findings: Finding[];
   trend: { date: string; score: number }[];
+  /**
+   * Feature 6: trend-level alert. Present (non-null) only when the
+   * accumulated score rose more than the threshold in the rolling window.
+   */
+  trend_alert: TrendAlert | null;
 }
 
 export interface RepoSummary {

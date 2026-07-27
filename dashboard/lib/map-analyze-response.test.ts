@@ -56,11 +56,13 @@ function makeRawResponse(
   return {
     repo_id: "test-repo",
     drift_score: 75.2,
+    repo_score: 65.0,
     risk_trend: [],
     summary: { CRITICAL: 0, HIGH: 1, MEDIUM: 0, LOW: 0 },
     findings,
     analyzed_changes: 42,
     engine_info: { version: "1.0.0" },
+    trend_alert: null,
     ...overrides,
   };
 }
@@ -397,5 +399,80 @@ describe("multiple findings", () => {
     expect(findings[1].severity).toBe("low");
     expect(findings[1].score).toBeCloseTo(0.1, 10);
     expect(findings[1].file).toBe("b.ts");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Feature 6: trend_alert pass-through
+// ---------------------------------------------------------------------------
+
+/** Minimal valid RawTrendAlert fixture. */
+function makeRawTrendAlert(overrides: Partial<import("@/lib/fastapi-client").RawTrendAlert> = {}) {
+  return {
+    fired: true as const,
+    score_start: 20.0,
+    score_end: 42.0,
+    delta: 22.0,
+    window_days: 30,
+    threshold: 15.0,
+    points_in_window: 3,
+    confidence: 0.71,
+    message: "Accumulated drift score rose +22.0 points over the last 30 days.",
+    ...overrides,
+  };
+}
+
+describe("trend_alert mapping (Feature 6)", () => {
+  it("trend_alert null in raw response → null in mapped output", () => {
+    const raw = makeRawResponse({ trend_alert: null });
+    const { trend_alert } = mapAnalyzeResponse(raw);
+    expect(trend_alert).toBeNull();
+  });
+
+  it("trend_alert absent (undefined) → coerced to null in mapped output", () => {
+    // Simulate older ai-service that doesn't include the field
+    const raw = makeRawResponse({});
+    delete (raw as any).trend_alert;
+    const { trend_alert } = mapAnalyzeResponse(raw);
+    expect(trend_alert).toBeNull();
+  });
+
+  it("trend_alert with fired=true passes through with correct shape", () => {
+    const rawAlert = makeRawTrendAlert();
+    const raw = makeRawResponse({ trend_alert: rawAlert });
+    const { trend_alert } = mapAnalyzeResponse(raw);
+
+    expect(trend_alert).not.toBeNull();
+    expect(trend_alert!.fired).toBe(true);
+    expect(trend_alert!.delta).toBe(22.0);
+    expect(trend_alert!.score_start).toBe(20.0);
+    expect(trend_alert!.score_end).toBe(42.0);
+    expect(trend_alert!.window_days).toBe(30);
+    expect(trend_alert!.threshold).toBe(15.0);
+    expect(trend_alert!.points_in_window).toBe(3);
+    expect(trend_alert!.confidence).toBe(0.71);
+    expect(typeof trend_alert!.message).toBe("string");
+  });
+
+  it("trend_alert scores are NOT divided by 100 (they stay on 0-100 scale)", () => {
+    // Unlike drift_score / risk_score which are ÷100, trend_alert scores
+    // represent raw accumulated scores stored in trend_points and must NOT
+    // be transformed.
+    const rawAlert = makeRawTrendAlert({ score_start: 25.5, score_end: 48.0 });
+    const raw = makeRawResponse({ trend_alert: rawAlert });
+    const { trend_alert } = mapAnalyzeResponse(raw);
+
+    // Must remain on 0-100 scale
+    expect(trend_alert!.score_start).toBe(25.5);
+    expect(trend_alert!.score_end).toBe(48.0);
+  });
+
+  it("trend_alert with custom window and threshold preserves those values", () => {
+    const rawAlert = makeRawTrendAlert({ window_days: 7, threshold: 8.0 });
+    const raw = makeRawResponse({ trend_alert: rawAlert });
+    const { trend_alert } = mapAnalyzeResponse(raw);
+
+    expect(trend_alert!.window_days).toBe(7);
+    expect(trend_alert!.threshold).toBe(8.0);
   });
 });

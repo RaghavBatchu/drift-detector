@@ -28,7 +28,7 @@
  * ─────────────────────────────────────────────────────────────────────────
  */
 
-import type { Finding, ReportSummary } from "@/types/contracts";
+import type { Finding, ReportSummary, TrendAlert } from "@/types/contracts";
 import type { RawAnalyzeResponse, RawFinding, RawSeverity } from "@/lib/fastapi-client";
 
 // ---------------------------------------------------------------------------
@@ -45,6 +45,12 @@ export interface MappedAnalysis {
    * Mirrors ai-service repo_score / 100.
    */
   repo_score: number;
+  /**
+   * Feature 6: trend-level alert, or null when the trend is within bounds.
+   * Scores inside the alert remain on the 0–100 scale (same as the Python
+   * side) because they represent the stored accumulated drift score directly.
+   */
+  trend_alert: TrendAlert | null;
 }
 
 
@@ -155,6 +161,9 @@ function mapSummary(
  * its own `trend_points` table (one row per completed scan) derived from the
  * mapped `drift_score` written back by the scan runner (Commit 7). Using
  * ai-service's cumulative-per-commit trend would double-count on re-scans.
+ *
+ * `raw.trend_alert` is passed through as-is; scores inside it remain on the
+ * 0–100 scale because they mirror stored trend_points.score * 100 directly.
  */
 export function mapAnalyzeResponse(raw: RawAnalyzeResponse): MappedAnalysis {
   return {
@@ -162,6 +171,7 @@ export function mapAnalyzeResponse(raw: RawAnalyzeResponse): MappedAnalysis {
     summary: mapSummary(raw.summary, raw.analyzed_changes),
     drift_score: raw.drift_score / 100,    // 0–100 → 0–1
     repo_score: (raw.repo_score ?? raw.drift_score) / 100, // 0–100 → 0–1; fallback for older ai-service
+    trend_alert: raw.trend_alert ?? null,  // Feature 6: pass through unchanged (0-100 scale)
   };
 }
 
