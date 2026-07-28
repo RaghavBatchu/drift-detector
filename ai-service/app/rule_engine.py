@@ -16,11 +16,15 @@ class Rule:
         self.applies_to = raw["applies_to"]          # "added" | "removed"
         self.patterns = [re.compile(p) for p in raw["patterns"]]
         self.unless_added = [re.compile(p) for p in raw.get("unless_added", [])]
+        self.exclude_patterns = [re.compile(p) for p in raw.get("exclude_patterns", [])]
         self.description = raw["description"]
         self.remediation = raw["remediation"]
 
     def match(self, line: str):
         """Return the first matching pattern, or None."""
+        for exc in self.exclude_patterns:
+            if exc.search(line):
+                return None
         for pat in self.patterns:
             if pat.search(line):
                 return pat.pattern
