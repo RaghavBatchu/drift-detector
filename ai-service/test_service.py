@@ -52,6 +52,21 @@ def test_hardcoded_secret_fires():
     assert any(h["rule"].id == "SEC-001" for h in hits)
 
 
+def test_env_var_password_does_not_fire_sec_001():
+    env_var_lines = [
+        'POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}',
+        'POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"',
+        'DB_PASS: $POSTGRES_PASSWORD',
+        'SECRET_KEY: {{ SECRET_KEY }}',
+        'password = process.env.DB_PASS',
+        'api_key = os.getenv("API_KEY")',
+    ]
+    for line in env_var_lines:
+        hits = engine.evaluate([line], [])
+        assert not any(h["rule"].id == "SEC-001" for h in hits), f"Line '{line}' false-triggered SEC-001"
+
+
+
 def test_open_cidr_fires():
     hits = engine.evaluate(['cidr_blocks = ["0.0.0.0/0"]'], [])
     assert any(h["rule"].id == "NET-001" for h in hits)
