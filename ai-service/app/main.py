@@ -19,7 +19,7 @@ from .models import AnalyzeRequest, AnalyzeResponse, Finding
 from .rule_engine import RuleEngine
 from .semantic import SemanticMatcher, EMBEDDER, INDEX_BACKEND
 from . import scoring
-from .explain import explain
+from .explain import explain, llm_fallback_inspect
 
 # ---------------------------------------------------------------------------
 # Custom Prometheus metrics
@@ -153,6 +153,19 @@ def run_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
                 evidence_side="added" if ch.added_lines else "removed",
             ))
             dated_scores.append((ch.commit_date or "0000", score))
+        else:
+            # Fallback inspection for unflagged changes (Approach 2)
+            llm_hit = llm_fallback_inspect(
+                file_path=ch.file_path,
+                added_lines=ch.added_lines,
+                removed_lines=ch.removed_lines,
+                author=ch.author,
+                commit_hash=ch.commit_hash,
+                commit_date=ch.commit_date,
+            )
+            if llm_hit:
+                findings.append(Finding(**llm_hit))
+                dated_scores.append((ch.commit_date or "0000", llm_hit["risk_score"]))
 
     findings.sort(key=lambda f: f.risk_score, reverse=True)
     per_scan_drift = scoring.drift_score([f.risk_score for f in findings])

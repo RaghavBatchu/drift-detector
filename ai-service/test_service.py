@@ -352,3 +352,61 @@ def test_trend_alert_custom_window_and_threshold():
     assert alert is not None
     assert alert["threshold"] == 8.0
     assert alert["window_days"] == 10
+
+
+# ---------------------------------------------------------------------------
+# Approach 2: LLM Fallback Inspector unit tests
+# ---------------------------------------------------------------------------
+from app.explain import llm_fallback_inspect  # noqa: E402
+
+
+def test_llm_fallback_disabled_by_default(monkeypatch):
+    """When EXPLAIN_LLM is disabled, return None for unflagged changes."""
+    monkeypatch.delenv("EXPLAIN_LLM", raising=False)
+    res = llm_fallback_inspect("test.yaml", ["custom_param: 123"], [])
+    assert res is None
+
+
+def test_llm_fallback_catches_unflagged_risk_when_enabled(monkeypatch):
+    """When EXPLAIN_LLM=1, mock HTTP response and verify finding structure."""
+    monkeypatch.setenv("EXPLAIN_LLM", "1")
+    monkeypatch.setenv("LLM_API_KEY", "test-mock-key")
+
+    mock_body = json.dumps({
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps({
+                        "is_risky": True,
+                        "severity": "HIGH",
+                        "risk_score": 75.0,
+                        "category": "misconfiguration",
+                        "summary": "Unsafe custom config flag detected",
+                        "explanation": "Setting custom_insecure_mode: true bypasses TLS validation.",
+                        "remediation": "Change custom_insecure_mode to false."
+                    })
+                }
+            }
+        ]
+    }).encode("utf-8")
+
+    class MockHTTPResponse:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def read(self):
+            return mock_body
+
+    import urllib.request
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=None: MockHTTPResponse())
+
+    res = llm_fallback_inspect("config/custom.yaml", ["custom_insecure_mode: true"], [])
+    assert res is not None
+    assert res["matched_by"] == "llm_fallback"
+    assert res["rule_id"] == "LLM-INSPECT"
+    assert res["severity"] == "HIGH"
+    assert res["risk_score"] == 75.0
+    assert "TLS validation" in res["explanation"]
+
+

@@ -45,6 +45,12 @@ services:
       HF_HOME: /root/.cache/huggingface
       # Inter-service auth
       INTERNAL_API_KEY: "${INTERNAL_API_KEY:-eB1iDCP80RbRwGQiKCrtLK_fdf348dfadf1982xfha}"
+      # LLM Fallback Inspector
+      EXPLAIN_LLM: "${EXPLAIN_LLM:-0}"
+      LLM_API_KEY: "${LLM_API_KEY:-}"
+      LLM_BASE_URL: "${LLM_BASE_URL:-https://api.openai.com/v1}"
+      LLM_MODEL: "${LLM_MODEL:-gpt-4o-mini}"
+      LLM_TIMEOUT: "${LLM_TIMEOUT:-5.0}"
     volumes:
       # Named volume keeps the sentence-transformers model between restarts
       - ai_model_cache:/root/.cache/huggingface
