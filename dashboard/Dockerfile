@@ -38,6 +38,9 @@ ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 RUN pnpm build
 
+# Copy drizzle-kit CLI into builder so it's available for the migration step
+# (drizzle-kit is a devDependency; it's in node_modules from the deps stage)
+
 # ---- Stage 3: Production runner ----------------------------
 FROM node:22-alpine AS runner
 
@@ -53,7 +56,20 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
+# ---- DB migrations -------------------------------------------------
+# drizzle-kit migrate reads drizzle.config.ts + the SQL files in ./drizzle.
+# We copy only what it needs so the runner image stays lean.
+COPY --from=builder /app/drizzle ./drizzle
+COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
+COPY --from=builder /app/db ./db
+# drizzle-kit itself (CLI + ORM) needs to be resolvable at runtime
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+# --------------------------------------------------------------------
+
 EXPOSE 3000
 
-# Next.js standalone entrypoint
-CMD ["node", "server.js"]
+# Run migrations then start the Next.js standalone server.
+# Using sh -c so that a migration failure stops the container (exit 1)
+# rather than silently starting a broken server.
+CMD ["sh", "-c", "npx drizzle-kit migrate && node server.js"]
