@@ -95,7 +95,7 @@ def run_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
     dated_scores: list[tuple[str, float]] = []
 
     for ch in req.changes:
-        rule_hits = engine.evaluate(ch.added_lines, ch.removed_lines)
+        rule_hits = engine.evaluate(ch.added_lines, ch.removed_lines, ch.file_path)
         pattern, sim = matcher.nearest(ch.file_path, ch.added_lines, ch.removed_lines)
         context = scoring.nlp_context_score(ch.file_path, ch.added_lines, ch.removed_lines)
 
