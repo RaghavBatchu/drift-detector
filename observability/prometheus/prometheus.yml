@@ -1,0 +1,45 @@
+# ============================================================
+# Prometheus — Drift Detector scrape configuration
+# ============================================================
+#
+# Scrape targets:
+#   ai-service  → http://ai-service:8001/metrics  (FastAPI + custom drift metrics)
+#
+# Prometheus itself is also scraped so you can chart its own
+# health (scrape duration, rule evaluation time, etc.) in Grafana.
+# ============================================================
+
+global:
+  scrape_interval:     15s   # How often Prometheus pulls metrics
+  evaluation_interval: 15s   # How often recording/alerting rules are evaluated
+  scrape_timeout:      10s
+
+# ---------------------------------------------------------------------------
+# Alerting (placeholder — add Alertmanager later if needed)
+# ---------------------------------------------------------------------------
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
+
+# ---------------------------------------------------------------------------
+# Scrape configs
+# ---------------------------------------------------------------------------
+scrape_configs:
+
+  # Self-monitoring — Prometheus scrapes its own /metrics
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # FastAPI AI Service — RED metrics (Rate, Errors, Duration) via
+  # prometheus-fastapi-instrumentator + custom drift_score gauge.
+  - job_name: "drift-ai-service"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["ai-service:8001"]
+    # Optional relabelling — tag every sample with the service name
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: "drift-ai-service"

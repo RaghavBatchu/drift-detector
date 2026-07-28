@@ -1,0 +1,20 @@
+# ============================================================
+# Grafana — Dashboard provisioning provider
+# ============================================================
+#
+# Grafana scans /var/lib/grafana/dashboards for *.json files
+# and loads them automatically on startup.
+# ============================================================
+
+apiVersion: 1
+
+providers:
+  - name: "Drift Detector Dashboards"
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

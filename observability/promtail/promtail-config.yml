@@ -1,0 +1,92 @@
+# ============================================================
+# Promtail — Log shipping agent configuration
+# ============================================================
+#
+# Promtail tails Docker container log files from the host's
+# /var/lib/docker/containers directory (bind-mounted into the container).
+# It enriches every log line with labels from the container's metadata
+# (container name, image name, compose project/service) and pushes
+# batches to Loki.
+#
+# Labels available in Loki after ingestion:
+#   {container="drift-ai-service"}
+#   {container="drift-dashboard"}
+#   {compose_service="ai-service"}
+#   {compose_service="dashboard"}
+#   {logstream="stdout"|"stderr"}
+# ============================================================
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  # Tracks which byte offset has been read in each log file so that
+  # Promtail resumes from the right place after a restart.
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+    batchsize: 1048576   # 1 MiB
+    batchwait: 1s
+
+scrape_configs:
+
+  # ----------------------------------------------------------
+  # Docker container logs
+  # ----------------------------------------------------------
+  - job_name: docker-containers
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: docker
+          # __path__ is the glob that Promtail watches.
+          # Each sub-directory is a container ID; * matches all containers.
+          __path__: /var/lib/docker/containers/*/*-json.log
+
+    pipeline_stages:
+      # 1. Parse the Docker JSON log wrapper
+      - json:
+          expressions:
+            output:    log      # actual log line text
+            stream:    stream   # "stdout" or "stderr"
+            timestamp: time     # RFC3339Nano timestamp from Docker
+
+      # 2. Set the log timestamp from Docker's own timestamp
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+
+      # 3. Promote the parsed fields to Loki labels
+      - labels:
+          stream:
+
+      # 4. Use the log text as the final line value
+      - output:
+          source: output
+
+      # 5. Extract container metadata from the file path
+      #    /var/lib/docker/containers/<container-id>/<container-id>-json.log
+      - match:
+          selector: '{job="docker"}'
+          stages:
+            - regex:
+                expression: '/var/lib/docker/containers/(?P<container_id>[^/]+)/'
+                source: filename
+            - labels:
+                container_id:
+
+    # Relabelling — pull container name & compose labels from Docker metadata.
+    # Promtail reads /var/lib/docker/containers/<id>/config.v2.json for this.
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: container
+      - source_labels: ['__meta_docker_container_log_stream']
+        target_label: logstream
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: compose_service
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_project']
+        target_label: compose_project
