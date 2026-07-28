@@ -10,6 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Gauge, Counter as PromCounter
 
 from .security import verify_internal_api_key
 
@@ -19,7 +21,37 @@ from .semantic import SemanticMatcher, EMBEDDER, INDEX_BACKEND
 from . import scoring
 from .explain import explain
 
+# ---------------------------------------------------------------------------
+# Custom Prometheus metrics
+# ---------------------------------------------------------------------------
+# Gauge: most-recent drift score returned by any /analyze or /scan call.
+_drift_score_gauge = Gauge(
+    "drift_scan_score_current",
+    "Most recent per-scan drift score (0-1)",
+)
+
+# Counter: total number of findings emitted, partitioned by severity and match type.
+_findings_counter = PromCounter(
+    "drift_findings_total",
+    "Total findings produced by the drift engine",
+    ["severity", "match_type"],
+)
+
+# Counter: total number of git-diff changes fed into the engine.
+_changes_counter = PromCounter(
+    "drift_scan_changes_analyzed_total",
+    "Total git-diff changes analyzed across all scans",
+)
+
 app = FastAPI(title="Drift Detector — AI Service", version="0.1.0")
+
+# ---------------------------------------------------------------------------
+# Prometheus instrumentation — auto-exposes /metrics with RED metrics
+# (Rate, Errors, Duration) for every FastAPI route.
+# /metrics is intentionally unauthenticated because Prometheus runs on the
+# same drift-net Docker network and never touches the public internet.
+# ---------------------------------------------------------------------------
+Instrumentator().instrument(app).expose(app, include_in_schema=False)
 
 # ---------------------------------------------------------------------------
 # Per-IP rate limiter — defense-in-depth on top of Commit 1's key check.
@@ -125,6 +157,15 @@ def run_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
     findings.sort(key=lambda f: f.risk_score, reverse=True)
     per_scan_drift = scoring.drift_score([f.risk_score for f in findings])
     repo_score = scoring.accumulated_drift_score(req.prior_scores, per_scan_drift)
+
+    # ---- Emit custom Prometheus metrics ----
+    _drift_score_gauge.set(per_scan_drift)
+    _changes_counter.inc(len(req.changes))
+    for f in findings:
+        _findings_counter.labels(
+            severity=f.severity,
+            match_type=f.matched_by or "unknown",
+        ).inc()
 
     # Feature 6: check if the trend jumped sharply over the rolling window.
     # Build the full dated history (prior points + this new point at now) and

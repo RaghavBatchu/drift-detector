@@ -1,0 +1,49 @@
+# ============================================================
+# Grafana — Datasource provisioning
+# ============================================================
+#
+# Grafana reads this file on startup and creates/updates the
+# datasources automatically — no manual UI setup required.
+#
+# Datasources:
+#   1. Prometheus  → metrics from ai-service + Prometheus itself
+#   2. Loki        → structured logs from all drift-net containers
+# ============================================================
+
+apiVersion: 1
+
+datasources:
+
+  # ----------------------------------------------------------
+  # Prometheus
+  # ----------------------------------------------------------
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus-ds
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: "15s"        # must match prometheus.yml global.scrape_interval
+      exemplarTraceIdDestinations: []
+
+  # ----------------------------------------------------------
+  # Loki
+  # ----------------------------------------------------------
+  - name: Loki
+    type: loki
+    uid: loki-ds
+    access: proxy
+    url: http://loki:3100
+    isDefault: false
+    editable: false
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        # Link scan_id appearing in logs to the dashboard scan detail page
+        - name: scan_id
+          matcherRegex: '"scan_id":\s*"([^"]+)"'
+          url: "http://localhost:3000/repos/$${__value.raw}"
+          datasourceUid: loki-ds

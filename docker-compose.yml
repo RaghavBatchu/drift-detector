@@ -2,12 +2,18 @@
 # Drift Detector — Docker Compose
 # ============================================================
 #
-# Services:
+# Application services:
 #   ai-service  → FastAPI (Python) on port 8001
 #   dashboard   → Next.js (Node.js) on port 3000
 #
+# Observability stack:
+#   prometheus  → Metrics collection          port 9090
+#   loki        → Log aggregation              port 3100
+#   promtail    → Log shipping agent           (no host port)
+#   grafana     → Unified visualisation UI     port 3001
+#
 # Network:
-#   Both services share the "drift-net" bridge network.
+#   All services share the "drift-net" bridge network.
 #   The dashboard reaches the ai-service at http://ai-service:8001
 #   (server-side only — set via FASTAPI_BASE_URL).
 #
@@ -104,11 +110,117 @@ services:
     networks:
       - drift-net
 
+  # ----------------------------------------------------------
+  # Prometheus — metrics collection
+  # Scrapes /metrics from ai-service every 15 s.
+  # UI: http://localhost:9090
+  # ----------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: drift-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    networks:
+      - drift-net
+
+  # ----------------------------------------------------------
+  # Loki — log aggregation
+  # Receives log streams pushed by Promtail.
+  # UI / API: http://localhost:3100
+  # ----------------------------------------------------------
+  loki:
+    image: grafana/loki:2.9.5
+    container_name: drift-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/loki-config.yml
+    networks:
+      - drift-net
+
+  # ----------------------------------------------------------
+  # Promtail — log shipping agent
+  # Tails Docker container log files from the host and ships
+  # them to Loki with container-level labels.
+  # Note: requires /var/lib/docker/containers to be bind-mounted
+  # from the host (Docker Desktop on Windows: enable host file
+  # sharing for that path, or use Docker Desktop WSL2 backend).
+  # ----------------------------------------------------------
+  promtail:
+    image: grafana/promtail:2.9.5
+    container_name: drift-promtail
+    restart: unless-stopped
+    volumes:
+      - ./observability/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      # Docker log files — read-only on the host
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      # Docker socket for metadata (container name/labels)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/promtail-config.yml
+    depends_on:
+      - loki
+    networks:
+      - drift-net
+
+  # ----------------------------------------------------------
+  # Grafana — unified observability UI
+  # Auto-provisions Prometheus + Loki datasources and the
+  # pre-built Drift Detector dashboard on first boot.
+  # UI: http://localhost:3001  (admin / admin)
+  # ----------------------------------------------------------
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: drift-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "http://localhost:3001"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      # Provisioning — datasources
+      - ./observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      # Provisioning — dashboard loader
+      - ./observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      # Pre-built dashboard JSON
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - drift-net
+
 # ============================================================
 # Named Volumes
 # ============================================================
 volumes:
+  # Application
   ai_model_cache:
+    driver: local
+
+  # Observability
+  prometheus_data:
+    driver: local
+  loki_data:
+    driver: local
+  grafana_data:
     driver: local
 
 # ============================================================
