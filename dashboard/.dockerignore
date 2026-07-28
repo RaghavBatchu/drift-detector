@@ -25,6 +25,5 @@ yarn-error.log*
 # TypeScript build info
 *.tsbuildinfo
 
-# Drizzle meta (runtime-generated)
+# Drizzle runtime-generated files
 .drizzle/
-drizzle/meta/

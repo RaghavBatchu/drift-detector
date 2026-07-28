@@ -66,6 +66,145 @@ def test_env_var_password_does_not_fire_sec_001():
         assert not any(h["rule"].id == "SEC-001" for h in hits), f"Line '{line}' false-triggered SEC-001"
 
 
+# ---------------------------------------------------------------------------
+# False-positive / false-negative regression tests (fix/rule-engine)
+# ---------------------------------------------------------------------------
+
+def test_dockerfile_arg_declaration_does_not_fire_sec_001():
+    """Bare ARG declarations name a build-time variable — they hold no value."""
+    arg_lines = [
+        "ARG POSTGRES_PASSWORD",
+        "ARG SECRET_KEY",
+        "ARG API_KEY",
+        "ARG ACCESS_KEY",
+        "  ARG PASSWD",          # indented
+    ]
+    for line in arg_lines:
+        hits = engine.evaluate([line], [])
+        assert not any(h["rule"].id == "SEC-001" for h in hits), (
+            f"Dockerfile ARG line '{line}' false-triggered SEC-001"
+        )
+
+
+def test_dockerfile_env_bare_var_reference_does_not_fire_sec_001():
+    """ENV KEY=$VARNAME — bare $VAR (no braces) is a Dockerfile variable reference."""
+    env_lines = [
+        "ENV PASSWORD=$BUILD_PASSWORD",
+        "ENV API_KEY=$MY_API_KEY",
+        "ENV SECRET_KEY=$SECRET_KEY",
+        "ENV ACCESS_KEY=$ACCESS_KEY_VAR",
+    ]
+    for line in env_lines:
+        hits = engine.evaluate([line], [])
+        assert not any(h["rule"].id == "SEC-001" for h in hits), (
+            f"Dockerfile ENV bare-var line '{line}' false-triggered SEC-001"
+        )
+
+
+def test_comment_lines_do_not_fire_sec_001():
+    """Comment lines are never executable config — keywords inside them must not fire."""
+    comment_lines = [
+        "# password = changeme",
+        "# api_key = AKIAIOSFODNN7EXAMPLE",
+        "# secret_key = abc123supersecret",
+        "  # passwd = hunter2",
+    ]
+    for line in comment_lines:
+        hits = engine.evaluate([line], [])
+        assert not any(h["rule"].id == "SEC-001" for h in hits), (
+            f"Comment line '{line}' false-triggered SEC-001"
+        )
+
+
+def test_comment_lines_do_not_fire_acc_001():
+    """'# USER root' in a Dockerfile comment must not trigger ACC-001."""
+    comment_lines = [
+        "# USER root",
+        "  # user root",
+        "# Previously: USER root was used here",
+    ]
+    for line in comment_lines:
+        hits = engine.evaluate([line], [])
+        assert not any(h["rule"].id == "ACC-001" for h in hits), (
+            f"Comment line '{line}' false-triggered ACC-001"
+        )
+
+
+def test_non_root_user_instruction_does_not_fire_acc_001():
+    """USER <non-root> in Dockerfile must not trigger ACC-001."""
+    safe_user_lines = [
+        "USER appuser",
+        "USER node",
+        "USER 1000",
+        "  USER myservice",
+    ]
+    for line in safe_user_lines:
+        hits = engine.evaluate([line], [])
+        assert not any(h["rule"].id == "ACC-001" for h in hits), (
+            f"Non-root USER line '{line}' false-triggered ACC-001"
+        )
+
+
+def test_user_root_still_fires_acc_001():
+    """Sanity: 'USER root' must still be caught by ACC-001."""
+    hits = engine.evaluate(["USER root"], [])
+    assert any(h["rule"].id == "ACC-001" for h in hits), (
+        "USER root should fire ACC-001 but did not"
+    )
+
+
+def test_pnpm_lock_file_is_skipped_entirely():
+    """pnpm-lock.yaml is auto-generated — even password-like content must not fire."""
+    from app.rule_engine import RuleEngine
+    _engine = RuleEngine()
+    risky_lines = [
+        'password = "hunter2secret"',
+        'cidr_blocks = ["0.0.0.0/0"]',
+        "privileged: true",
+    ]
+    hits = _engine.evaluate(risky_lines, [], file_path="pnpm-lock.yaml")
+    assert hits == [], (
+        f"pnpm-lock.yaml should be skipped entirely, but got hits: {hits}"
+    )
+
+
+def test_yarn_lock_file_is_skipped_entirely():
+    """yarn.lock is auto-generated — no rule should fire for any content."""
+    from app.rule_engine import RuleEngine
+    _engine = RuleEngine()
+    risky_lines = [
+        'password = "supersecret123"',
+        '0.0.0.0/0',
+    ]
+    hits = _engine.evaluate(risky_lines, [], file_path="yarn.lock")
+    assert hits == [], (
+        f"yarn.lock should be skipped entirely, but got hits: {hits}"
+    )
+
+
+def test_package_lock_json_is_skipped_entirely():
+    """package-lock.json is auto-generated — no rule should fire."""
+    from app.rule_engine import RuleEngine
+    _engine = RuleEngine()
+    risky_lines = ['  "password": "abc123secretvalue"']
+    hits = _engine.evaluate(risky_lines, [], file_path="frontend/package-lock.json")
+    assert hits == [], (
+        f"package-lock.json should be skipped entirely, but got hits: {hits}"
+    )
+
+
+def test_lock_file_skip_does_not_affect_normal_yaml():
+    """app.yaml / docker-compose.yml — must NOT be skipped (not a lock file)."""
+    from app.rule_engine import RuleEngine
+    _engine = RuleEngine()
+    hits = _engine.evaluate(['password = "hunter2secret"'], [], file_path="config/app.yaml")
+    assert any(h["rule"].id == "SEC-001" for h in hits), (
+        "Normal YAML with hardcoded password should still fire SEC-001"
+    )
+
+
+
+
 
 def test_open_cidr_fires():
     hits = engine.evaluate(['cidr_blocks = ["0.0.0.0/0"]'], [])

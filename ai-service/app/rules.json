@@ -77,7 +77,9 @@
         "(?i)token[\"'=:\\s]+ey[A-Za-z0-9._-]{20,}"
       ],
       "exclude_patterns": [
-        "(?i)(password|passwd|pwd|api[_-]?key|secret[_-]?key|access[_-]?key)[\"'=:\\s]*[:=]?\\s*['\"]?(?:\\$\\{[^}]+\\}|\\$[A-Za-z_][A-Za-z0-9_]*|\\{\\{[^}]+\\}\\}|<[^>]+>|process\\.env\\.[A-Za-z0-9_]+|os\\.getenv\\([^)]+\\)|os\\.environ\\[[^\\]]+\\]|env\\([^)]+\\))['\"]?"
+        "(?i)(password|passwd|pwd|api[_-]?key|secret[_-]?key|access[_-]?key)[\"'=:\\s]*[:=]?\\s*['\"]?(?:\\$\\{[^}]+\\}|\\$[A-Za-z_][A-Za-z0-9_]*|\\{\\{[^}]+\\}\\}|<[^>]+>|process\\.env\\.[A-Za-z0-9_]+|os\\.getenv\\([^)]+\\)|os\\.environ\\[[^\\]]+\\]|env\\([^)]+\\))['\"]?",
+        "(?i)^\\s*ARG\\s+\\S+",
+        "^\\s*#"
       ],
       "description": "A credential appears in plaintext inside a config file.",
       "remediation": "Move to a secrets manager (Vault, AWS SM, sealed-secrets); rotate the exposed credential immediately."
@@ -204,7 +206,10 @@
         "(?i)runAsUser[\"':\\s]+0\\b",
         "(?i)runAsNonRoot[\"':\\s]+false",
         "(?i)allowPrivilegeEscalation[\"':\\s]+true",
-        "(?i)^\\s*user\\s+root"
+        "(?i)^\\s*user\\s+root\\s*$"
+      ],
+      "exclude_patterns": [
+        "^\\s*#"
       ],
       "description": "Container granted root or full host privileges.",
       "remediation": "Run as non-root, drop capabilities, set allowPrivilegeEscalation: false."
