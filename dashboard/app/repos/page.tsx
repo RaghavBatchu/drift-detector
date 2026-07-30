@@ -86,28 +86,37 @@ export default function ReposPage() {
     });
   };
 
+  // Helper to normalize score to 0-100 percentage
+  const getScorePct = (score: number | null) => {
+    if (score === null) return null;
+    return score <= 1.0 ? score * 100 : score;
+  };
+
   // Color mapping based on score
   const getScoreColor = (score: number | null) => {
-    if (score === null) return "text-muted-foreground bg-muted";
-    if (score >= 80) return "text-severity-critical bg-severity-critical/10 border-severity-critical/20";
-    if (score >= 50) return "text-severity-high bg-severity-high/10 border-severity-high/20";
-    if (score >= 20) return "text-severity-medium bg-severity-medium/10 border-severity-medium/20";
+    const pct = getScorePct(score);
+    if (pct === null) return "text-muted-foreground bg-muted";
+    if (pct >= 80) return "text-severity-critical bg-severity-critical/10 border-severity-critical/20";
+    if (pct >= 50) return "text-severity-high bg-severity-high/10 border-severity-high/20";
+    if (pct >= 20) return "text-severity-medium bg-severity-medium/10 border-severity-medium/20";
     return "text-emerald-500 bg-emerald-500/10 border-emerald-500/20";
   };
 
   const getScoreProgressColor = (score: number | null) => {
-    if (score === null) return "bg-muted";
-    if (score >= 80) return "bg-severity-critical";
-    if (score >= 50) return "bg-severity-high";
-    if (score >= 20) return "bg-severity-medium";
+    const pct = getScorePct(score);
+    if (pct === null) return "bg-muted";
+    if (pct >= 80) return "bg-severity-critical";
+    if (pct >= 50) return "bg-severity-high";
+    if (pct >= 20) return "bg-severity-medium";
     return "bg-emerald-500";
   };
 
   const getScoreLabel = (score: number | null) => {
-    if (score === null) return "Unknown";
-    if (score >= 80) return "Critical Drift";
-    if (score >= 50) return "High Drift";
-    if (score >= 20) return "Medium Drift";
+    const pct = getScorePct(score);
+    if (pct === null) return "Unknown";
+    if (pct >= 80) return "Critical Drift";
+    if (pct >= 50) return "High Drift";
+    if (pct >= 20) return "Medium Drift";
     return "Low Drift";
   };
 
@@ -211,22 +220,25 @@ export default function ReposPage() {
                 </div>
 
                 {/* Score Bar */}
-                {repo.latest_drift_score !== null ? (
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-semibold text-muted-foreground">Drift Score</span>
-                      <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${getScoreColor(repo.latest_drift_score)}`}>
-                        {repo.latest_drift_score.toFixed(0)} - {getScoreLabel(repo.latest_drift_score)}
-                      </span>
+                {repo.latest_drift_score !== null ? (() => {
+                  const scorePct = getScorePct(repo.latest_drift_score)!;
+                  return (
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-semibold text-muted-foreground">Drift Score</span>
+                        <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${getScoreColor(repo.latest_drift_score)}`}>
+                          {Math.round(scorePct)} - {getScoreLabel(repo.latest_drift_score)}
+                        </span>
+                      </div>
+                      <div className="h-2 w-full bg-muted rounded-full overflow-hidden border border-border/20">
+                        <div
+                          className={`h-full transition-all duration-500 ${getScoreProgressColor(repo.latest_drift_score)}`}
+                          style={{ width: `${Math.min(100, Math.max(0, scorePct))}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="h-2 w-full bg-muted rounded-full overflow-hidden border border-border/20">
-                      <div
-                        className={`h-full transition-all duration-500 ${getScoreProgressColor(repo.latest_drift_score)}`}
-                        style={{ width: `${repo.latest_drift_score}%` }}
-                      />
-                    </div>
-                  </div>
-                ) : (
+                  );
+                })() : (
                   <div className="space-y-2">
                     <div className="flex justify-between items-center text-xs">
                       <span className="font-semibold text-muted-foreground">Drift Score</span>

@@ -114,15 +114,26 @@ export default function RepoTrendPage({ params }: { params: Promise<{ id: string
       };
     }
 
+    const dateCounts = new Map<string, number>();
+    trend.forEach((pt) => {
+      const d = new Date(pt.date);
+      const dayStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      dateCounts.set(dayStr, (dateCounts.get(dayStr) || 0) + 1);
+    });
+
     const formatted = trend.map((pt) => {
       const date = new Date(pt.date);
-      const formattedDate = date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      });
+      const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const timeStr = date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+      const isMultiScanDay = (dateCounts.get(dateStr) || 0) > 1;
+      const formattedDate = isMultiScanDay ? `${dateStr} ${timeStr}` : dateStr;
+
+      const rawVal = pt.score;
+      const scorePct = parseFloat((rawVal <= 1.0 ? rawVal * 100 : rawVal).toFixed(1));
+
       return {
         formattedDate,
-        score: parseFloat((pt.score * 100).toFixed(1)),
+        score: scorePct,
         rawDate: date,
       };
     });
