@@ -87,7 +87,12 @@ export async function GET(
     const high = findings.filter(f => f.severity === "high").length;
     const medium = findings.filter(f => f.severity === "medium").length;
     const low = findings.filter(f => f.severity === "low").length;
-    const changesScanned = findings.length * 15 + 12;
+    const changesScanned = findings.reduce((acc, f) => {
+      const ev = f.evidence as { added?: unknown[]; removed?: unknown[] } | null;
+      const addedCount = Array.isArray(ev?.added) ? ev.added.length : 0;
+      const removedCount = Array.isArray(ev?.removed) ? ev.removed.length : 0;
+      return acc + addedCount + removedCount;
+    }, 0) || (findings.length > 0 ? findings.length * 8 : 0);
 
     const mappedFindings = findings.map((f) => ({
       id: f.id,

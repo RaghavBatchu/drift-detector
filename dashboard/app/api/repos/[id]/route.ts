@@ -91,7 +91,12 @@ export async function GET(
       const high = findings.filter(f => f.severity === "high").length;
       const medium = findings.filter(f => f.severity === "medium").length;
       const low = findings.filter(f => f.severity === "low").length;
-      const changesScanned = findings.length * 15 + 12;
+      const changesScanned = findings.reduce((acc, f) => {
+        const ev = f.evidence as { added?: unknown[]; removed?: unknown[] } | null;
+        const addedCount = Array.isArray(ev?.added) ? ev.added.length : 0;
+        const removedCount = Array.isArray(ev?.removed) ? ev.removed.length : 0;
+        return acc + addedCount + removedCount;
+      }, 0) || (findings.length > 0 ? findings.length * 8 : 0);
 
       const mappedFindings = findings.map((f) => ({
         id: f.id,
@@ -155,3 +160,61 @@ export async function GET(
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+/**
+ * @swagger
+ * /api/repos/{id}:
+ *   delete:
+ *     summary: Delete repository
+ *     description: Permanently delete a repository and all associated scans, findings, and trend points.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: The repository ID.
+ *     responses:
+ *       200:
+ *         description: Repository deleted.
+ *       401:
+ *         description: Unauthorized.
+ *       404:
+ *         description: Repository not found.
+ */
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  // 1. Auth check
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const userId = session.user.id;
+  const { id: repoId } = await params;
+
+  try {
+    // 2. Verify ownership
+    const existingRepo = await db.query.repos.findFirst({
+      where: and(eq(schema.repos.id, repoId), eq(schema.repos.userId, userId)),
+    });
+
+    if (!existingRepo) {
+      return NextResponse.json({ error: "Repository not found" }, { status: 404 });
+    }
+
+    // 3. Delete repo (cascades to scans, findings, trend_points in DB schema)
+    await db.delete(schema.repos).where(and(eq(schema.repos.id, repoId), eq(schema.repos.userId, userId)));
+
+    return NextResponse.json({ message: "Repository deleted successfully", id: repoId });
+  } catch (err) {
+    console.error("Failed to delete repository:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+

@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { RepoSummary } from "@/types/contracts";
-import { Calendar, ExternalLink, Plus } from "lucide-react";
+import { Calendar, ExternalLink, Plus, Trash2, Loader2, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
@@ -16,8 +16,13 @@ export default function ReposPage() {
   const [repos, setRepos] = useState<RepoSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const shouldReduceMotion = useReducedMotion();
 
+  // Deletion state
+  const [deleteTarget, setDeleteTarget] = useState<RepoSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const shouldReduceMotion = useReducedMotion();
   const router = useRouter();
 
   const fetchRepos = async () => {
@@ -73,6 +78,28 @@ export default function ReposPage() {
       active = false;
     };
   }, [router]);
+
+  const handleDeleteRepo = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/repos/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to delete repository");
+      }
+      // Remove deleted repo from frontend state
+      setRepos((prev) => prev.filter((r) => r.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err: unknown) {
+      setDeleteError(err instanceof Error ? err.message : "An unexpected error occurred.");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const formatLastScan = (dateString: string | null) => {
     if (!dateString) return "Never scanned";
@@ -173,7 +200,7 @@ export default function ReposPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -205,7 +232,24 @@ export default function ReposPage() {
               <CardHeader className="pb-4">
                 <CardTitle className="text-lg font-bold truncate flex items-center justify-between gap-2">
                   <span className="truncate group-hover:text-primary transition-colors">{repo.name}</span>
-                  <ExternalLink className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-all translate-x-[-4px] group-hover:translate-x-0" />
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all cursor-pointer rounded-md"
+                      title="Delete repository"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDeleteTarget(repo);
+                        setDeleteError(null);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                    <ExternalLink className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-all translate-x-[-4px] group-hover:translate-x-0" />
+                  </div>
                 </CardTitle>
                 <CardDescription className="font-mono text-xs truncate text-muted-foreground flex items-center space-x-1">
                   <span>{repo.url}</span>
@@ -256,6 +300,66 @@ export default function ReposPage() {
           </Link>
         ))}
       </motion.div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => !deleting && setDeleteTarget(null)}
+        >
+          <div
+            className="w-full max-w-md bg-card border border-border rounded-xl p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-full bg-destructive/10 text-destructive shrink-0">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-lg leading-none">Delete Repository</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed pt-1">
+                  Are you sure you want to delete <span className="font-semibold text-foreground font-mono">{deleteTarget.name}</span>?
+                  This will permanently delete the repository and all associated scans and findings from both the database and dashboard.
+                </p>
+              </div>
+            </div>
+
+            {deleteError && (
+              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-xs text-destructive">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="cursor-pointer"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteRepo}
+                disabled={deleting}
+                className="cursor-pointer gap-2 font-medium"
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Deleting…
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" /> Delete Repository
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

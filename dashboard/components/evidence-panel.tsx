@@ -59,7 +59,11 @@ export function EvidencePanel({ finding }: EvidencePanelProps) {
             <div className="space-y-1">
               <span className="text-muted-foreground block">Similarity Match</span>
               <span className="font-bold text-foreground">
-                {(finding.evidence.pattern_match * 100).toFixed(0)}%
+                {finding.evidence.pattern_match && finding.evidence.pattern_match > 0
+                  ? `${(finding.evidence.pattern_match * 100).toFixed(0)}%`
+                  : !isSimilarityOnly
+                  ? "Rule Match (Exact)"
+                  : "N/A"}
               </span>
             </div>
             <div className="h-8 w-px bg-border/60" />
