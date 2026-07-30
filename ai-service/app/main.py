@@ -3,6 +3,7 @@
 Run:  uvicorn app.main:app --reload --port 8001
 Docs: http://localhost:8001/docs
 """
+import os
 from collections import Counter
 
 from fastapi import Depends, FastAPI, Request
@@ -58,7 +59,8 @@ Instrumentator().instrument(app).expose(app, include_in_schema=False)
 # 10 req/hour per IP.  In normal use the dashboard's server IP is the only
 # caller, so raise this if multi-user dashboard traffic starts tripping it.
 # ---------------------------------------------------------------------------
-limiter = Limiter(key_func=get_remote_address)
+_rate_limit_enabled = os.getenv("DISABLE_RATE_LIMIT", "false").lower() != "true"
+limiter = Limiter(key_func=get_remote_address, enabled=_rate_limit_enabled)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -198,7 +200,7 @@ def run_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
         429: {"description": "Rate limit exceeded"},
     },
 )
-@limiter.limit("10/hour")
+@limiter.limit(os.getenv("RATE_LIMIT_PER_HOUR", "10") + "/hour")
 def analyze(request: Request, req: AnalyzeRequest):
     return run_analysis(req)
 

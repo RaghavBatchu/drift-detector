@@ -38,7 +38,8 @@ MineError: type = _mine_module.MineError
 
 # Limiter instance — must use the same key_func as main.py so both routes
 # share the same per-IP counter namespace on app.state.limiter.
-limiter = Limiter(key_func=get_remote_address)
+_rate_limit_enabled = os.getenv("DISABLE_RATE_LIMIT", "false").lower() != "true"
+limiter = Limiter(key_func=get_remote_address, enabled=_rate_limit_enabled)
 
 router = APIRouter(dependencies=[Depends(verify_internal_api_key)])
 
@@ -58,7 +59,7 @@ class ScanRequest(BaseModel):
         429: {"description": "Rate limit exceeded"},
     },
 )
-@limiter.limit("10/hour")
+@limiter.limit(os.getenv("RATE_LIMIT_PER_HOUR", "10") + "/hour")
 def scan(request: Request, req: ScanRequest):
     # mine the repo — raises MineError for invalid/unreachable URLs
     try:
