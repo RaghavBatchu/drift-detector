@@ -494,7 +494,7 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
 
           {/* Findings Table */}
           <div className="pt-4">
-            <FindingsTable findings={report.findings} />
+            <FindingsTable findings={report.findings} repoId={repoId} />
           </div>
         </>
       )}

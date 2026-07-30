@@ -41,9 +41,12 @@ export function Header() {
       .slice(0, 2);
   };
 
+  const userRole = (session?.user as { role?: string })?.role;
+
   const navLinks = [
     { href: "/", label: "Dashboard" },
     { href: "/repos", label: "Repositories" },
+    ...(userRole === "admin" ? [{ href: "/admin/reviews", label: "Reviews (Admin)" }] : []),
     { href: "/api-docs", label: "API Docs" },
   ];
 

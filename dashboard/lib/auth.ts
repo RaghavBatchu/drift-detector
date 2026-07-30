@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { emailOTP } from "better-auth/plugins";
+import { admin, emailOTP } from "better-auth/plugins";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
 
@@ -20,6 +20,16 @@ export const auth = betterAuth({
     provider: "pg",
     schema: schema,
   }),
+  user: {
+    additionalFields: {
+      role: {
+        type: "string",
+        required: false,
+        defaultValue: "user",
+        input: false, // Security: prevent self-assignment of admin role on sign up
+      },
+    },
+  },
   emailAndPassword: {
     enabled: true,
     // Block sign-in for accounts that have not yet verified their email via OTP.
@@ -29,6 +39,7 @@ export const auth = betterAuth({
     autoSignIn: false, // after sign-up the user must verify email, then sign in
   },
   plugins: [
+    admin(),
     emailOTP({
       // Send the 6-digit OTP whenever better-auth needs to verify an email.
       // LOCAL DEV: OTP is printed to stdout — view with:

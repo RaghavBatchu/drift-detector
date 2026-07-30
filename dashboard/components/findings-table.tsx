@@ -1,27 +1,30 @@
-"use client";
-
 import React, { useState, useMemo } from "react";
 import { Finding, Severity } from "@/types/contracts";
 import { SeverityBadge } from "@/components/severity-badge";
 import { EvidencePanel } from "@/components/evidence-panel";
+import { ReviewModal } from "@/components/review-modal";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   ChevronDown,
   ChevronUp,
   Search,
   ShieldCheck,
+  MessageSquareWarning,
 } from "lucide-react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 
 interface FindingsTableProps {
   findings: Finding[];
+  repoId?: string;
 }
 
-export function FindingsTable({ findings }: FindingsTableProps) {
+export function FindingsTable({ findings, repoId = "" }: FindingsTableProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSeverity, setSelectedSeverity] = useState<string>("all");
   const [selectedFileType, setSelectedFileType] = useState<string>("all");
   const [expandedFindingId, setExpandedFindingId] = useState<string | null>(null);
+  const [reviewFinding, setReviewFinding] = useState<Finding | null>(null);
 
   const shouldReduceMotion = useReducedMotion();
 
@@ -202,9 +205,26 @@ export function FindingsTable({ findings }: FindingsTableProps) {
                     <div className="text-xs text-muted-foreground line-clamp-1">{finding.change_summary}</div>
                   </div>
 
-                  {/* Expand/Collapse Indicator */}
-                  <div className="text-muted-foreground shrink-0">
-                    {isExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                  {/* Actions & Expand/Collapse Indicator */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 text-xs text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10 cursor-pointer gap-1.5 px-2.5 rounded-md border border-border/40"
+                      title="Report Misclassification"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setReviewFinding(finding);
+                      }}
+                    >
+                      <MessageSquareWarning className="h-3.5 w-3.5 text-amber-500" />
+                      <span className="hidden sm:inline font-medium">Review / Report</span>
+                    </Button>
+
+                    <div className="text-muted-foreground p-1">
+                      {isExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                    </div>
                   </div>
                 </div>
 
@@ -227,6 +247,16 @@ export function FindingsTable({ findings }: FindingsTableProps) {
           })
         )}
       </div>
+
+      {/* Review Modal */}
+      {reviewFinding && (
+        <ReviewModal
+          finding={reviewFinding}
+          repoId={repoId}
+          isOpen={!!reviewFinding}
+          onClose={() => setReviewFinding(null)}
+        />
+      )}
     </div>
   );
 }

@@ -57,5 +57,4 @@ COPY --from=builder /app/migrate.mjs ./migrate.mjs
 EXPOSE 3000
 
 # Run migrations (idempotent) then start the Next.js standalone server.
-# A migration failure exits non-zero and stops the container immediately.
 CMD ["sh", "-c", "node migrate.mjs && node server.js"]

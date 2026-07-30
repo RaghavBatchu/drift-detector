@@ -24,6 +24,7 @@ export function proxy(request: NextRequest) {
   // ── Protected page routes ───────────────────────────────────────────────────
   const isProtectedPage =
     pathname.startsWith("/repos") ||
+    pathname.startsWith("/admin") ||
     pathname.startsWith("/api-docs");
 
   // ── Protected API routes ────────────────────────────────────────────────────
@@ -31,7 +32,8 @@ export function proxy(request: NextRequest) {
     pathname.startsWith("/api/repos") ||
     pathname.startsWith("/api/scans") ||
     pathname.startsWith("/api/scan") ||    // POST /api/scan — start a scan
-    pathname.startsWith("/api/report");    // GET  /api/report/[id] (singular)
+    pathname.startsWith("/api/report") ||  // GET  /api/report/[id]
+    pathname.startsWith("/api/reviews");   // GET/POST/PATCH /api/reviews
 
   if ((isProtectedPage || isProtectedApi) && !sessionToken) {
     if (isProtectedApi) {
@@ -59,6 +61,7 @@ export const config = {
   matcher: [
     // Protected pages
     "/repos/:path*",
+    "/admin/:path*",
     "/api-docs",
     "/api-docs/:path*",
     // Protected API routes
@@ -66,6 +69,8 @@ export const config = {
     "/api/scans/:path*",
     "/api/scan",           // POST — start a new scan
     "/api/report/:path*",  // GET  — drift report (singular, not /reports)
+    "/api/reviews",        // GET/POST — review submissions
+    "/api/reviews/:path*", // PATCH/DELETE — review actions
     // Auth pages (redirect-if-authenticated logic)
     "/sign-in",
     "/sign-up",

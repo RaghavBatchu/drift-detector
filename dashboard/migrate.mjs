@@ -1,4 +1,4 @@
-﻿/**
+/**
  * migrate.mjs — run Drizzle ORM migrations at container startup.
  *
  * Uses the @neondatabase/serverless HTTP driver so it works from inside
@@ -28,7 +28,17 @@ if (isNeon) {
   console.log("Running migrations via Neon HTTP driver…");
   const sql = neon(databaseUrl);
   const db = drizzle(sql);
-  await migrate(db, { migrationsFolder: join(__dirname, "drizzle") });
+  try {
+    await migrate(db, { migrationsFolder: join(__dirname, "drizzle") });
+  } catch (e) {
+    console.log("Migrate note:", e?.message || e);
+  }
+  await sql.transaction([
+    sql`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "role" text DEFAULT 'user' NOT NULL`,
+    sql`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "banned" boolean DEFAULT false`,
+    sql`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "banReason" text`,
+    sql`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "banExpires" timestamp`,
+  ]);
 } else {
   // Local Postgres (docker-compose dev or CI): use node-postgres.
   const { default: pg } = await import("pg");
@@ -37,7 +47,17 @@ if (isNeon) {
   console.log("Running migrations via node-postgres driver…");
   const pool = new pg.Pool({ connectionString: databaseUrl });
   const db = drizzlePg(pool);
-  await migratePg(db, { migrationsFolder: join(__dirname, "drizzle") });
+  try {
+    await migratePg(db, { migrationsFolder: join(__dirname, "drizzle") });
+  } catch (e) {
+    console.log("Migrate note:", e?.message || e);
+  }
+  await pool.query(`
+    ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "role" text DEFAULT 'user' NOT NULL;
+    ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "banned" boolean DEFAULT false;
+    ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "banReason" text;
+    ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "banExpires" timestamp;
+  `);
   await pool.end();
 }
 

@@ -7,6 +7,10 @@ export const user = pgTable("user", {
   email: text("email").notNull().unique(),
   emailVerified: boolean("emailVerified").notNull(),
   image: text("image"),
+  role: text("role").default("user").notNull(), // 'user' | 'admin'
+  banned: boolean("banned").default(false),
+  banReason: text("banReason"),
+  banExpires: timestamp("banExpires"),
   createdAt: timestamp("createdAt").notNull(),
   updatedAt: timestamp("updatedAt").notNull(),
 });
@@ -106,3 +110,23 @@ export const trendPoints = pgTable("trend_points", {
   date: timestamp("date").notNull(),
   score: doublePrecision("score").notNull(),
 });
+
+export const findingReviews = pgTable("finding_reviews", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  repoId: uuid("repo_id")
+    .notNull()
+    .references(() => repos.id, { onDelete: "cascade" }),
+  findingId: text("finding_id").notNull(),
+  file: text("file").notNull(),
+  commit: text("commit").notNull(),
+  ruleId: text("rule_id"),
+  severity: text("severity").notNull(),
+  reason: text("reason").notNull(),
+  status: text("status").default("pending").notNull(), // 'pending', 'resolved', 'dismissed'
+  proof: jsonb("proof").$type<Record<string, unknown>>().notNull(), // Full snapshot of finding card proof
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
