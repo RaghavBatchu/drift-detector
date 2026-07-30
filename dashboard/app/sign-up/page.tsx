@@ -27,6 +27,13 @@ function SignUpForm() {
       return;
     }
 
+    // Basic email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+
     if (password.length < 8) {
       setError("Password must be at least 8 characters long.");
       return;
@@ -46,8 +53,8 @@ function SignUpForm() {
       if (res?.error) {
         setError(res.error.message || "Failed to create account.");
       } else {
-        router.push(callbackUrl);
-        router.refresh();
+        // Redirect to verify-email page with user email
+        router.push(`/verify-email?email=${encodeURIComponent(email)}`);
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "An unexpected error occurred.";

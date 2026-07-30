@@ -29,19 +29,29 @@ function GithubIcon(props: React.SVGProps<SVGSVGElement>) {
 }
 
 function SignInForm() {
-  const [email, setEmail] = useState("");
+  const searchParams = useSearchParams();
+  const initialEmail = searchParams.get("email") || "";
+  const isVerified = searchParams.get("verified") === "true";
+
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const router = useRouter();
-  const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/";
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
       setError("Please fill in all fields.");
+      return;
+    }
+
+    // Basic email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError("Please enter a valid email address.");
       return;
     }
 
@@ -56,7 +66,9 @@ function SignInForm() {
       });
 
       if (res?.error) {
-        setError(res.error.message || "Failed to sign in. Please check your credentials.");
+        // Surface a clear message — better-auth returns "Invalid email or password"
+        // for both "user not found" and "wrong password" to avoid account enumeration.
+        setError(res.error.message || "Invalid email or password. Please check your credentials or sign up.");
       } else {
         router.push(callbackUrl);
         router.refresh();
@@ -94,6 +106,11 @@ function SignInForm() {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSignIn} className="space-y-4">
+          {isVerified && (
+            <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-md text-xs text-emerald-500 font-medium">
+              Email verified successfully! You can now sign in below.
+            </div>
+          )}
           {error && (
             <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-xs text-destructive animate-fadeIn">
               {error}
