@@ -42,7 +42,22 @@ def final_score(rule_score: float | None, similarity: float | None,
     """Return (risk_score 0-100, confidence 0-1) using the 40/30/30 weights.
 
     Missing components redistribute their weight to what's present, and
-    confidence reflects how many independent signals agreed.
+    confidence reflects how many independent signals agreed and their quality.
+
+    Confidence formula (replaces the old 3-bucket lookup that always produced
+    0.85 for rule-only hits):
+
+        base  = 0.45 + 0.15 × signals_present          (0.60 / 0.75 / 0.90)
+        bonus = 0.08 if a deterministic rule fired       (hard rule = high trust)
+        boost = 0.06 × (similarity / 1.0) if semantic   (scaled by match quality)
+
+        confidence = clamp(base + bonus + boost, 0.50, 0.98)
+
+    Typical outputs:
+        context-only              → ~0.60
+        rule-only                 → ~0.68 + rule bonus   → ~0.76–0.80
+        rule + semantic (sim=0.7) → ~0.90 + boost(0.04) → ~0.94 (capped 0.98)
+        all three present         → ~0.90 + 0.08 + boost → capped at 0.98
     """
     parts, weights = [], []
     if rule_score is not None:
@@ -54,10 +69,12 @@ def final_score(rule_score: float | None, similarity: float | None,
     total_w = sum(weights)
     score = sum(p * w for p, w in zip(parts, weights)) / total_w
 
-    signals = (rule_score is not None) + (similarity is not None) + 1
-    confidence = {1: 0.55, 2: 0.8, 3: 0.95}[signals]
-    if rule_score is not None:
-        confidence = min(1.0, confidence + 0.05)  # deterministic hit = high trust
+    signals = (rule_score is not None) + (similarity is not None) + 1  # always ≥1 (context)
+    base = 0.45 + 0.15 * signals                                        # 0.60 | 0.75 | 0.90
+    bonus = 0.08 if rule_score is not None else 0.0                     # deterministic rule bonus
+    boost = 0.06 * min(similarity, 1.0) if similarity is not None else 0.0  # semantic quality
+    confidence = max(0.50, min(0.98, base + bonus + boost))
+
     return round(score, 1), round(confidence, 2)
 
 

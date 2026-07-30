@@ -21,6 +21,7 @@ from .rule_engine import RuleEngine
 from .semantic import SemanticMatcher, EMBEDDER, INDEX_BACKEND
 from . import scoring
 from .explain import explain
+from .llm_fallback import LLMFallbackAuditor, status as llm_status
 
 # ---------------------------------------------------------------------------
 # Custom Prometheus metrics
@@ -95,6 +96,8 @@ def run_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
     """Core rule/semantic/scoring pipeline — shared by /analyze and /scan."""
     findings: list[Finding] = []
     dated_scores: list[tuple[str, float]] = []
+    # Instantiate a fresh auditor per scan so call-count caps reset correctly.
+    llm_auditor = LLMFallbackAuditor()
 
     for ch in req.changes:
         rule_hits = engine.evaluate(ch.added_lines, ch.removed_lines, ch.file_path)
@@ -155,6 +158,44 @@ def run_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
                 evidence_side="added" if ch.added_lines else "removed",
             ))
             dated_scores.append((ch.commit_date or "0000", score))
+        else:
+            # ----------------------------------------------------------------
+            # Layer 3.5 — LLM Fallback: no rule AND no semantic match.
+            # Route the diff to the Gemini API for AI security triage.
+            # ----------------------------------------------------------------
+            llm_result = llm_auditor.audit_diff(
+                file_path=ch.file_path,
+                commit_hash=ch.commit_hash,
+                commit_date=ch.commit_date,
+                author=ch.author,
+                added_lines=ch.added_lines,
+                removed_lines=ch.removed_lines,
+            )
+            if llm_result is not None:
+                expl, rem = explain(llm_result)
+                findings.append(Finding(
+                    file_path=llm_result["file_path"],
+                    commit_hash=llm_result["commit_hash"],
+                    commit_date=llm_result["commit_date"],
+                    severity=scoring.severity_from_score(
+                        llm_result["risk_score"], llm_result["severity"]
+                    ),
+                    risk_score=llm_result["risk_score"],
+                    confidence=llm_result["confidence"],
+                    rule_id=None,
+                    rule_name=None,
+                    category=llm_result["category"],
+                    evidence=llm_result["evidence"],
+                    matched_by="llm",
+                    nearest_pattern=None,
+                    similarity=None,
+                    explanation=expl,
+                    remediation=rem,
+                    author=llm_result["author"],
+                    change_summary=llm_result["change_summary"],
+                    evidence_side=llm_result["evidence_side"],
+                ))
+                dated_scores.append((ch.commit_date or "0000", llm_result["risk_score"]))
 
     findings.sort(key=lambda f: f.risk_score, reverse=True)
     per_scan_drift = scoring.drift_score([f.risk_score for f in findings])
@@ -185,8 +226,13 @@ def run_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
         summary=dict(Counter(f.severity for f in findings)),
         findings=findings,
         analyzed_changes=len(req.changes),
-        engine_info={"embedder": EMBEDDER, "index": INDEX_BACKEND,
-                     "rules": len(engine.rules), "seed_patterns": len(matcher.patterns)},
+        engine_info={
+            "embedder": EMBEDDER,
+            "index": INDEX_BACKEND,
+            "rules": len(engine.rules),
+            "seed_patterns": len(matcher.patterns),
+            "llm_fallback": llm_status(),
+        },
         trend_alert=alert,
     )
 

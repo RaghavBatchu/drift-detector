@@ -44,7 +44,7 @@ class Finding(BaseModel):
     rule_name: Optional[str]
     category: str                      # network_exposure | secrets_auth | ...
     evidence: list[str]                # exact lines that triggered it
-    matched_by: str                    # "rule" | "semantic" | "rule+semantic"
+    matched_by: str                    # "rule" | "semantic" | "rule+semantic" | "llm"
     nearest_pattern: Optional[str]     # closest seed pattern (semantic layer)
     similarity: Optional[float]        # cosine similarity to nearest pattern
     explanation: str                   # plain-English reason

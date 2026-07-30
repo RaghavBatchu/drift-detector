@@ -41,8 +41,8 @@ export interface RawFinding {
   category: string;
   /** Flat string[] of exact lines that triggered the finding. */
   evidence: string[];
-  /** "rule" | "semantic" | "rule+semantic" */
-  matched_by: string;
+  /** "rule" | "semantic" | "rule+semantic" | "llm" */
+  matched_by: "rule" | "semantic" | "rule+semantic" | "llm" | string;
   nearest_pattern: string | null;
   similarity: number | null;
   explanation: string;
@@ -96,7 +96,8 @@ export interface RawAnalyzeResponse {
   summary: Record<RawSeverity, number>;
   findings: RawFinding[];
   analyzed_changes: number;
-  engine_info: Record<string, string | number>;
+  /** Embedder, index backend, rule/pattern counts, and llm_fallback status. */
+  engine_info: Record<string, string | number | boolean | Record<string, unknown>>;
   /**
    * Feature 6: trend-level alert. Non-null when the accumulated score rose
    * more than the threshold within the rolling window. Null otherwise.

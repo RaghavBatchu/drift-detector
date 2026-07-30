@@ -6,7 +6,7 @@ No external dependencies required (only stdlib + the local app package logic inl
 import json, re, sys
 from pathlib import Path
 
-ROOT = Path(r"c:\Users\omu21\OneDrive\Desktop\Progata\drift-detector\ai-service")
+ROOT = Path(__file__).parent
 
 # ---- inline rule loading ----
 rules_path = ROOT / "app/rules.json"

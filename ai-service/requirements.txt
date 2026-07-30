@@ -12,6 +12,11 @@ faiss-cpu>=1.8
 # Observability — Prometheus metrics endpoint
 prometheus-fastapi-instrumentator>=6.1
 
+# LLM Fallback Layer (Layer 3.5) — Gemini API client
+# Required when EXPLAIN_LLM=1 and GEMINI_API_KEY is set.
+# The service starts and runs without this; only the LLM fallback is skipped.
+google-generativeai>=0.7
+
 # Dev
 pytest>=8.0
 httpx>=0.27

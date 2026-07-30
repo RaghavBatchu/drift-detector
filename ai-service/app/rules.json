@@ -243,6 +243,46 @@
       ],
       "description": "Files or mounts writable by any user on the host.",
       "remediation": "Tighten to 640/750; give write access only to the owning service account."
+    },
+    {
+      "id": "SEC-005",
+      "name": "Audit logging disabled",
+      "category": "secrets_auth",
+      "severity": "LOW",
+      "base_score": 40,
+      "applies_to": "added",
+      "patterns": [
+        "(?i)audit[_-]?log(ging)?[\"':\\s]*[=:]\\s*(false|0|off|disabled|no)",
+        "(?i)access[_-]?log[\"':\\s]*[=:]\\s*(false|0|off|disabled|no|none)",
+        "(?i)log[_-]?level[\"':\\s]*[=:]\\s*[\"']?(none|off|silent|quiet)[\"']?",
+        "(?i)disable[_-]?(audit|access|event)[_-]?log"
+      ],
+      "exclude_patterns": [
+        "^\\s*#",
+        "(?i)\\b(test|dev|local|sandbox)\\b"
+      ],
+      "description": "Audit or access logging turned off — removes the forensic trail needed to detect and investigate incidents.",
+      "remediation": "Re-enable audit logging and forward logs to a tamper-resistant sink (e.g. CloudTrail, a SIEM, or a write-once S3 bucket)."
+    },
+    {
+      "id": "CFG-001",
+      "name": "Unrestricted session or cache TTL",
+      "category": "configuration_drift",
+      "severity": "LOW",
+      "base_score": 38,
+      "applies_to": "added",
+      "patterns": [
+        "(?i)session[_-]?(timeout|ttl|expir(y|ation))[\"':\\s]*[=:]\\s*0\\b",
+        "(?i)(cache|token)[_-]?(ttl|expir(y|ation))[\"':\\s]*[=:]\\s*-1\\b",
+        "(?i)(session|token)[_-]?(timeout|ttl|expir(y|ation))[\"':\\s]*[=:]\\s*(\\d{6,})",
+        "(?i)cookie[_-]?secure[\"':\\s]*[=:]\\s*(false|0|no|off)",
+        "(?i)cookie[_-]?http[_-]?only[\"':\\s]*[=:]\\s*(false|0|no|off)"
+      ],
+      "exclude_patterns": [
+        "^\\s*#"
+      ],
+      "description": "Session or cache TTL set to 0, -1, or an extremely large value — can enable indefinite session hijacking or stale-data exposure.",
+      "remediation": "Set session TTL to a business-appropriate maximum (typically 1-8 hours). Enable cookie Secure and HttpOnly flags for all session cookies."
     }
   ]
 }
